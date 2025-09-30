@@ -12,7 +12,28 @@ import logging
 from typing import Dict, Any, Optional, List
 from contextlib import asynccontextmanager
 
-import cv2
+# Try to import OpenCV with fallback
+try:
+    import cv2
+    OPENCV_AVAILABLE = True
+    print("OpenCV imported successfully")
+except ImportError as e:
+    print(f"OpenCV import failed: {e}")
+    OPENCV_AVAILABLE = False
+    # Create a dummy cv2 module for fallback
+    class DummyCV2:
+        @staticmethod
+        def imdecode(data, flags):
+            return None
+        @staticmethod
+        def imencode(ext, img):
+            return (False, None)
+        @staticmethod
+        def cvtColor(img, code):
+            return img
+        COLOR_BGR2RGB = 4
+    cv2 = DummyCV2()
+
 import numpy as np
 from ultralytics import YOLO
 from fastapi import FastAPI, File, UploadFile, HTTPException
@@ -248,6 +269,10 @@ def get_severity_level(class_id: int, confidence: float) -> str:
 
 def create_annotated_image(image: np.ndarray, detections: List[Dict[str, Any]]) -> str:
     """Create annotated image with bounding boxes"""
+    if not OPENCV_AVAILABLE:
+        # Return original image if OpenCV is not available
+        return base64.b64encode(image.tobytes()).decode('utf-8')
+    
     annotated_image = image.copy()
     
     for detection in detections:
@@ -311,6 +336,8 @@ async def detect_motorcycle_issues(
         # Read and process image
         image_data = await file.read()
         nparr = np.frombuffer(image_data, np.uint8)
+        if not OPENCV_AVAILABLE:
+            raise HTTPException(status_code=500, detail="OpenCV not available for image processing")
         image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
         
         if image is None:
@@ -372,6 +399,8 @@ async def detect_motorcycle_issues_base64(
         # Decode base64 image
         image_data = base64.b64decode(data["image_data"])
         nparr = np.frombuffer(image_data, np.uint8)
+        if not OPENCV_AVAILABLE:
+            raise HTTPException(status_code=500, detail="OpenCV not available for image processing")
         image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
         
         if image is None:

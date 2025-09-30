@@ -1,13 +1,33 @@
-FROM python:3.9-slim
+# Use Ubuntu 20.04 for better OpenCV support
+FROM ubuntu:20.04
+
+# Prevent interactive prompts during package installation
+ENV DEBIAN_FRONTEND=noninteractive
 
 WORKDIR /app
 
-# Install system dependencies
+# Install system dependencies including OpenCV requirements
 RUN apt-get update && apt-get install -y \
+    python3 \
+    python3-pip \
+    python3-dev \
+    libgl1-mesa-glx \
     libglib2.0-0 \
+    libsm6 \
+    libxext6 \
+    libxrender-dev \
     libgomp1 \
+    libgcc-s1 \
+    libgfortran5 \
+    libatlas3-base \
+    libhdf5-103 \
+    libopenblas0 \
+    liblapack3 \
     curl \
     && rm -rf /var/lib/apt/lists/*
+
+# Create symbolic links for python
+RUN ln -s /usr/bin/python3 /usr/bin/python
 
 # Install Python dependencies
 COPY requirements.minimal.txt requirements.txt

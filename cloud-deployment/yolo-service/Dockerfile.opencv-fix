@@ -1,0 +1,69 @@
+FROM python:3.9-slim
+
+WORKDIR /app
+
+# Install system dependencies for OpenCV
+RUN apt-get update && apt-get install -y \
+    libglib2.0-0 \
+    libgomp1 \
+    libgl1-mesa-glx \
+    libglib2.0-0 \
+    libgtk-3-0 \
+    libavcodec-dev \
+    libavformat-dev \
+    libswscale-dev \
+    libv4l-dev \
+    libxvidcore-dev \
+    libx264-dev \
+    libjpeg-dev \
+    libpng-dev \
+    libtiff-dev \
+    libatlas-base-dev \
+    gfortran \
+    curl \
+    wget \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Python dependencies
+RUN pip install --upgrade pip && \
+    pip install --no-cache-dir \
+    fastapi \
+    uvicorn \
+    numpy \
+    Pillow \
+    supabase \
+    redis \
+    python-multipart \
+    python-dotenv \
+    structlog \
+    httpx \
+    prometheus-client
+
+# Install OpenCV with specific version
+RUN pip install --no-cache-dir opencv-python-headless==4.8.1.78
+
+# Install PyTorch CPU version
+RUN pip install --no-cache-dir torch==2.0.1+cpu torchvision==0.15.2+cpu --index-url https://download.pytorch.org/whl/cpu
+
+# Install YOLOv8 (this will also install OpenCV as dependency)
+RUN pip install --no-cache-dir ultralytics==8.0.196
+
+# Copy application code
+COPY . .
+
+# Create directories for models
+RUN mkdir -p /app/models
+
+# Create non-root user
+RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
+USER appuser
+
+# Expose port
+EXPOSE 8002
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:8002/health || exit 1
+
+# Start the application
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8002"]

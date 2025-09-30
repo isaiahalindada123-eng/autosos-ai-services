@@ -12,7 +12,28 @@ import logging
 from typing import Dict, Any, Optional
 from contextlib import asynccontextmanager
 
-import cv2
+# Try to import OpenCV with fallback
+try:
+    import cv2
+    OPENCV_AVAILABLE = True
+    print("OpenCV imported successfully")
+except ImportError as e:
+    print(f"OpenCV import failed: {e}")
+    OPENCV_AVAILABLE = False
+    # Create a dummy cv2 module for fallback
+    class DummyCV2:
+        @staticmethod
+        def imdecode(data, flags):
+            return None
+        @staticmethod
+        def imencode(ext, img):
+            return (False, None)
+        @staticmethod
+        def cvtColor(img, code):
+            return img
+        COLOR_BGR2RGB = 4
+    cv2 = DummyCV2()
+
 import numpy as np
 import tensorflow as tf
 from fastapi import FastAPI, File, UploadFile, Form, HTTPException
@@ -137,6 +158,8 @@ async def register_face(
         # Read and process image
         image_data = await file.read()
         nparr = np.frombuffer(image_data, np.uint8)
+        if not OPENCV_AVAILABLE:
+            raise HTTPException(status_code=500, detail="OpenCV not available for image processing")
         image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
         
         if image is None:
@@ -174,6 +197,8 @@ async def recognize_face(file: UploadFile = File(...)):
         # Read and process image
         image_data = await file.read()
         nparr = np.frombuffer(image_data, np.uint8)
+        if not OPENCV_AVAILABLE:
+            raise HTTPException(status_code=500, detail="OpenCV not available for image processing")
         image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
         
         if image is None:
@@ -222,6 +247,8 @@ async def recognize_face_base64(data: Dict[str, str]):
         # Decode base64 image
         image_data = base64.b64decode(data["image_data"])
         nparr = np.frombuffer(image_data, np.uint8)
+        if not OPENCV_AVAILABLE:
+            raise HTTPException(status_code=500, detail="OpenCV not available for image processing")
         image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
         
         if image is None:
@@ -269,6 +296,8 @@ async def process_payment(
         # Read and process image
         image_data = await file.read()
         nparr = np.frombuffer(image_data, np.uint8)
+        if not OPENCV_AVAILABLE:
+            raise HTTPException(status_code=500, detail="OpenCV not available for image processing")
         image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
         
         if image is None:

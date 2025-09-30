@@ -1,0 +1,67 @@
+FROM continuumio/miniconda3:latest
+
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    libglib2.0-0 \
+    libsm6 \
+    libxext6 \
+    libxrender-dev \
+    libgomp1 \
+    libgl1-mesa-glx \
+    libglib2.0-0 \
+    libgtk-3-0 \
+    libavcodec-dev \
+    libavformat-dev \
+    libswscale-dev \
+    libv4l-dev \
+    libxvidcore-dev \
+    libx264-dev \
+    libjpeg-dev \
+    libpng-dev \
+    libtiff-dev \
+    libatlas-base-dev \
+    gfortran \
+    curl \
+    wget \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create conda environment
+RUN conda create -n autosos python=3.9 -y
+
+# Activate environment and install packages
+RUN conda run -n autosos pip install --no-cache-dir \
+    fastapi \
+    uvicorn \
+    tensorflow-cpu \
+    opencv-python-headless \
+    numpy \
+    Pillow \
+    supabase \
+    redis \
+    python-multipart \
+    python-dotenv \
+    structlog \
+    httpx \
+    prometheus-client
+
+# Copy application code
+COPY . .
+
+# Create directories for models
+RUN mkdir -p /app/models
+
+# Create non-root user
+RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
+USER appuser
+
+# Expose port
+EXPOSE 8001
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:8001/health || exit 1
+
+# Start the application
+CMD ["conda", "run", "-n", "autosos", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8001"]

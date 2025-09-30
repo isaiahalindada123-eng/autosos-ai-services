@@ -1,0 +1,50 @@
+FROM opencv/opencv:4.8.0-ubuntu
+
+WORKDIR /app
+
+# Install Python and pip
+RUN apt-get update && apt-get install -y \
+    python3 \
+    python3-pip \
+    python3-dev \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create symlink for python
+RUN ln -s /usr/bin/python3 /usr/bin/python
+
+# Install Python dependencies
+RUN pip3 install --upgrade pip && \
+    pip3 install --no-cache-dir \
+    fastapi \
+    uvicorn \
+    tensorflow-cpu \
+    numpy \
+    Pillow \
+    supabase \
+    redis \
+    python-multipart \
+    python-dotenv \
+    structlog \
+    httpx \
+    prometheus-client
+
+# Copy application code
+COPY . .
+
+# Create directories for models
+RUN mkdir -p /app/models
+
+# Create non-root user
+RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
+USER appuser
+
+# Expose port
+EXPOSE 8001
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:8001/health || exit 1
+
+# Start the application
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8001"]
