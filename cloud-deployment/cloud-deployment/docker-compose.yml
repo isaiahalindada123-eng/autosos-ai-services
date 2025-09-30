@@ -1,0 +1,168 @@
+version: '3.8'
+
+services:
+  # API Gateway - Entry point for all services
+  api-gateway:
+    build: ./api-gateway
+    ports:
+      - "8000:8000"
+    environment:
+      - FACENET_SERVICE_URL=http://facenet-service:8001
+      - YOLO_SERVICE_URL=http://yolo-service:8002
+      - OLLAMA_SERVICE_URL=http://ollama-service:11434
+      - REDIS_URL=redis://redis:6379
+    depends_on:
+      - facenet-service
+      - yolo-service
+      - ollama-service
+      - redis
+    networks:
+      - autosos-network
+    restart: unless-stopped
+
+  # FaceNet Service for facial recognition
+  facenet-service:
+    build: ./facenet-service
+    ports:
+      - "8001:8001"
+    environment:
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_KEY=${SUPABASE_KEY}
+      - REDIS_URL=redis://redis:6379
+      - MODEL_CACHE_DIR=/app/models
+    volumes:
+      - facenet-models:/app/models
+      - facenet-cache:/app/cache
+    depends_on:
+      - redis
+    networks:
+      - autosos-network
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+        reservations:
+          memory: 1G
+
+  # YOLOv8 Service for motorcycle diagnostics
+  yolo-service:
+    build: ./yolo-service
+    ports:
+      - "8002:8002"
+    environment:
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_KEY=${SUPABASE_KEY}
+      - REDIS_URL=redis://redis:6379
+      - MODEL_CACHE_DIR=/app/models
+    volumes:
+      - yolo-models:/app/models
+      - yolo-cache:/app/cache
+    depends_on:
+      - redis
+    networks:
+      - autosos-network
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+        reservations:
+          memory: 2G
+
+  # Ollama Service for AI chat diagnostics
+  ollama-service:
+    build: ./ollama-service
+    ports:
+      - "11434:11434"
+    environment:
+      - OLLAMA_HOST=0.0.0.0
+      - OLLAMA_ORIGINS=*
+      - OLLAMA_MODELS=/root/.ollama/models
+    volumes:
+      - ollama-models:/root/.ollama/models
+    networks:
+      - autosos-network
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 8G
+        reservations:
+          memory: 4G
+
+  # Redis for caching and session management
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    networks:
+      - autosos-network
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+
+  # Nginx for load balancing and SSL termination
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf
+      - ./nginx/ssl:/etc/nginx/ssl
+    depends_on:
+      - api-gateway
+    networks:
+      - autosos-network
+    restart: unless-stopped
+
+  # Monitoring with Prometheus
+  prometheus:
+    image: prom/prometheus:latest
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus-data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--web.enable-lifecycle'
+    networks:
+      - autosos-network
+    restart: unless-stopped
+
+  # Grafana for visualization
+  grafana:
+    image: grafana/grafana:latest
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./monitoring/grafana/dashboards:/etc/grafana/provisioning/dashboards
+      - ./monitoring/grafana/datasources:/etc/grafana/provisioning/datasources
+    depends_on:
+      - prometheus
+    networks:
+      - autosos-network
+    restart: unless-stopped
+
+volumes:
+  facenet-models:
+  facenet-cache:
+  yolo-models:
+  yolo-cache:
+  ollama-models:
+  redis-data:
+  prometheus-data:
+  grafana-data:
+
+networks:
+  autosos-network:
+    driver: bridge

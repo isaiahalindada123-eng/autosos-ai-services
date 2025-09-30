@@ -1,0 +1,2 @@
+# Ollama service doesn't need Python requirements
+# It uses the official Ollama Docker image
