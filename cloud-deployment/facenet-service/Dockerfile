@@ -1,22 +1,10 @@
-# Use Python 3.9 official image with OpenCV support
+# Use Python 3.9 official image with no OpenCV system dependencies
 FROM python:3.9-slim
 
 WORKDIR /app
 
-# Install system dependencies for OpenCV
+# Install only curl for health checks
 RUN apt-get update && apt-get install -y \
-    libgl1-mesa-glx \
-    libglib2.0-0 \
-    libsm6 \
-    libxext6 \
-    libxrender-dev \
-    libgomp1 \
-    libgcc-s1 \
-    libgfortran5 \
-    libatlas3-base \
-    libhdf5-103 \
-    libopenblas0 \
-    liblapack3 \
     curl \
     && rm -rf /var/lib/apt/lists/*
 

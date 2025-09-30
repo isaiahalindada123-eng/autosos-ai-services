@@ -32,6 +32,8 @@ except ImportError as e:
         def cvtColor(img, code):
             return img
         COLOR_BGR2RGB = 4
+        IMREAD_COLOR = 1
+        FONT_HERSHEY_SIMPLEX = 0
     cv2 = DummyCV2()
 
 import numpy as np
