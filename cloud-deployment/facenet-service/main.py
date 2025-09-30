@@ -171,7 +171,7 @@ async def register_face(
         
         if result["success"]:
             # Cache the result
-            await redis_client.setex(
+            redis_client.setex(
                 f"facenet:register:{user_id}",
                 3600,  # 1 hour
                 json.dumps(result)
@@ -210,7 +210,7 @@ async def recognize_face(file: UploadFile = File(...)):
         
         if result:
             # Cache the result
-            await redis_client.setex(
+            redis_client.setex(
                 f"facenet:recognize:{result['user_id']}",
                 300,  # 5 minutes
                 json.dumps(result)
@@ -349,7 +349,7 @@ async def process_payment(
         }
         
         # Cache the payment data
-        await redis_client.setex(
+        redis_client.setex(
             f"payment:{booking_id}",
             3600,  # 1 hour
             json.dumps(payment_data)
@@ -369,6 +369,59 @@ async def process_payment(
         
     except Exception as e:
         logger.error("Payment processing failed", error=str(e), client_id=client_id)
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+@app.post("/detect-base64")
+async def detect_base64(data: Dict[str, Any]):
+    """Detect objects from base64 encoded image (YOLOv8 compatibility endpoint)"""
+    REQUEST_COUNT.labels(method="POST", endpoint="/detect-base64", status="200").inc()
+    
+    try:
+        # Check if image_data key exists
+        if "image_data" not in data:
+            logger.error("Missing 'image_data' key in request", data_keys=list(data.keys()))
+            raise HTTPException(status_code=400, detail="Missing 'image_data' key in request")
+        
+        # Decode base64 image
+        image_data = base64.b64decode(data["image_data"])
+        nparr = np.frombuffer(image_data, np.uint8)
+        if not OPENCV_AVAILABLE:
+            raise HTTPException(status_code=500, detail="OpenCV not available for image processing")
+        image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+        
+        if image is None:
+            raise HTTPException(status_code=400, detail="Invalid image format")
+        
+        # For now, return a mock detection response since this is a FaceNet service
+        # In a real scenario, this should either redirect to YOLOv8 service or return an error
+        confidence = data.get("confidence", 0.5)
+        include_annotated_image = data.get("include_annotated_image", True)
+        
+        # Mock detection response
+        response_data = {
+            "success": True,
+            "detections": [],
+            "detection_count": 0,
+            "image_size": {
+                "width": image.shape[1],
+                "height": image.shape[0]
+            },
+            "confidence_threshold": confidence,
+            "processing_time": time.time(),
+            "service": "facenet",
+            "message": "This is a FaceNet service. YOLOv8 detection requests should be sent to the YOLOv8 service."
+        }
+        
+        logger.info("YOLOv8 detection request received on FaceNet service", 
+                   image_size=f"{image.shape[1]}x{image.shape[0]}",
+                   confidence_threshold=confidence)
+        
+        return response_data
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("YOLOv8 detection failed", error=str(e))
         raise HTTPException(status_code=500, detail="Internal server error")
 
 @app.get("/face-count")

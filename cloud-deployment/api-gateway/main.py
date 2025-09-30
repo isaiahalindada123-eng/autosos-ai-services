@@ -160,6 +160,37 @@ async def metrics():
     """Prometheus metrics endpoint"""
     return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
+# Direct YOLOv8 endpoints for backward compatibility
+@app.post("/detect-base64")
+async def detect_base64_direct(
+    data: Dict[str, Any],
+    start_time: float = Depends(time_request)
+):
+    """Direct YOLOv8 detection from base64 (backward compatibility)"""
+    REQUEST_COUNT.labels(method="POST", endpoint="/detect-base64", status="200").inc()
+    
+    if not service_health["yolo"]:
+        raise HTTPException(status_code=503, detail="YOLOv8 service unavailable")
+    
+    try:
+        # Forward request to YOLOv8 service
+        response = await http_client.post(
+            f"{YOLO_SERVICE_URL}/detect-base64",
+            json=data
+        )
+        
+        if response.status_code == 200:
+            result = response.json()
+            return result  # Return raw result for backward compatibility
+        else:
+            raise HTTPException(status_code=response.status_code, detail=response.text)
+            
+    except httpx.TimeoutException:
+        raise HTTPException(status_code=504, detail="YOLOv8 service timeout")
+    except Exception as e:
+        logger.error("YOLOv8 direct base64 detection failed", error=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
+
 # FaceNet Endpoints
 
 @app.post("/api/facenet/register")
@@ -332,6 +363,41 @@ async def detect_motorcycle_issues(
         raise HTTPException(status_code=504, detail="YOLOv8 service timeout")
     except Exception as e:
         logger.error("YOLOv8 detection failed", error=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+@app.post("/api/yolo/detect-base64")
+async def detect_motorcycle_issues_base64(
+    data: Dict[str, Any],
+    start_time: float = Depends(time_request)
+):
+    """Detect motorcycle issues using YOLOv8 from base64 encoded image"""
+    REQUEST_COUNT.labels(method="POST", endpoint="/api/yolo/detect-base64", status="200").inc()
+    
+    if not service_health["yolo"]:
+        raise HTTPException(status_code=503, detail="YOLOv8 service unavailable")
+    
+    try:
+        # Forward request to YOLOv8 service
+        response = await http_client.post(
+            f"{YOLO_SERVICE_URL}/detect-base64",
+            json=data
+        )
+        
+        if response.status_code == 200:
+            result = response.json()
+            return ServiceResponse(
+                success=True,
+                data=result,
+                service="yolo",
+                processing_time=time.time() - start_time
+            )
+        else:
+            raise HTTPException(status_code=response.status_code, detail=response.text)
+            
+    except httpx.TimeoutException:
+        raise HTTPException(status_code=504, detail="YOLOv8 service timeout")
+    except Exception as e:
+        logger.error("YOLOv8 base64 detection failed", error=str(e))
         raise HTTPException(status_code=500, detail="Internal server error")
 
 # Ollama Endpoints

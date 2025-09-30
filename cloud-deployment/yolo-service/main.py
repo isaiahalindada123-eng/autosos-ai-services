@@ -317,8 +317,48 @@ async def health_check():
         "service": "yolo",
         "opencv_available": OPENCV_AVAILABLE,
         "timestamp": time.time(),
-        "model_loaded": yolo_model is not None
+        "model_loaded": yolo_model is not None,
+        "model_name": getattr(yolo_model, 'model_name', 'motorcycle_diagnostic_v1') if yolo_model else None
     }
+
+@app.get("/model-info")
+async def model_info():
+    """Get detailed model information"""
+    if yolo_model is None:
+        return JSONResponse(
+            status_code=503,
+            content={"error": "YOLOv8 model not initialized"}
+        )
+    
+    try:
+        # Get model information
+        model_info = {
+            "model_loaded": True,
+            "model_name": "motorcycle_diagnostic_v1",
+            "model_type": "YOLOv8",
+            "input_size": "640x640",
+            "classes": [
+                "brake_pad_wear",
+                "chain_loose", 
+                "tire_wear",
+                "oil_leak",
+                "battery_corrosion",
+                "light_damage",
+                "mirror_damage",
+                "exhaust_damage"
+            ],
+            "opencv_available": OPENCV_AVAILABLE,
+            "timestamp": time.time()
+        }
+        
+        return model_info
+        
+    except Exception as e:
+        logger.error("Failed to get model info", error=str(e))
+        return JSONResponse(
+            status_code=500,
+            content={"error": "Failed to get model information"}
+        )
 
 @app.get("/metrics")
 async def metrics():
