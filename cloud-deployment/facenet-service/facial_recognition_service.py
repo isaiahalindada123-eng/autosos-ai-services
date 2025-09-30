@@ -54,7 +54,7 @@ class FaceNetService:
             
             # Download model from Supabase Storage if not exists locally
             if not os.path.exists(self.model_path):
-                await self._download_model_from_supabase()
+                self._download_model_from_supabase()
             
             # Load model
             if os.path.exists(self.model_path):
@@ -65,7 +65,7 @@ class FaceNetService:
                 self.model = self._create_facenet_model()
                 self.model.save(self.model_path)
                 # Upload to Supabase Storage
-                await self._upload_model_to_supabase()
+                self._upload_model_to_supabase()
             
             # Load face database
             if os.path.exists(self.database_path):
@@ -112,7 +112,7 @@ class FaceNetService:
             
         return model
     
-    async def _download_model_from_supabase(self):
+    def _download_model_from_supabase(self):
         """Download model from Supabase Storage"""
         if not self.supabase_client:
             self.logger.warning("Supabase client not initialized, skipping model download")
@@ -152,7 +152,7 @@ class FaceNetService:
         except Exception as e:
             self.logger.error(f"Failed to download models from Supabase: {e}")
     
-    async def _upload_model_to_supabase(self):
+    def _upload_model_to_supabase(self):
         """Upload model to Supabase Storage"""
         if not self.supabase_client:
             self.logger.warning("Supabase client not initialized, skipping model upload")
