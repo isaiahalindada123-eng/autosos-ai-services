@@ -1,10 +1,34 @@
-# Use a pre-built image with working OpenCV
-FROM jjanzic/docker-python3-opencv:latest
+# Use Python 3.9 with comprehensive OpenCV support
+FROM python:3.9
 
 WORKDIR /app
 
-# Install additional system dependencies
+# Install system dependencies for OpenCV and ultralytics
 RUN apt-get update && apt-get install -y \
+    libgl1-mesa-glx \
+    libglib2.0-0 \
+    libsm6 \
+    libxext6 \
+    libxrender1 \
+    libgomp1 \
+    libgcc-s1 \
+    libgfortran5 \
+    libatlas3-base \
+    libhdf5-103 \
+    libopenblas0 \
+    liblapack3 \
+    libgtk-3-0 \
+    libavcodec-dev \
+    libavformat-dev \
+    libswscale-dev \
+    libv4l-dev \
+    libxvidcore-dev \
+    libx264-dev \
+    libjpeg-dev \
+    libpng-dev \
+    libtiff-dev \
+    libatlas-base-dev \
+    gfortran \
     curl \
     && rm -rf /var/lib/apt/lists/*
 

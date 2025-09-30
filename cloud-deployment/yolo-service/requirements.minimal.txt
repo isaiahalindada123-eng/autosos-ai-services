@@ -1,7 +1,8 @@
-# Requirements for YOLOv8 service (OpenCV installed via conda)
+# Requirements for YOLOv8 service with full OpenCV support
 fastapi
 uvicorn
 ultralytics
+opencv-python
 numpy
 Pillow
 supabase
