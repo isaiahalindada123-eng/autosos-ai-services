@@ -313,6 +313,7 @@ async def health_check():
     return {
         "status": "healthy",
         "service": "yolo",
+        "opencv_available": OPENCV_AVAILABLE,
         "timestamp": time.time(),
         "model_loaded": yolo_model is not None
     }

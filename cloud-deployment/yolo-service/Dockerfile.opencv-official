@@ -1,12 +1,18 @@
-# Use a pre-built image with working OpenCV
-FROM jjanzic/docker-python3-opencv:latest
+# Use official OpenCV image as base
+FROM opencv/opencv:4.8.0-ubuntu
 
 WORKDIR /app
 
-# Install additional system dependencies
+# Install Python and pip
 RUN apt-get update && apt-get install -y \
+    python3 \
+    python3-pip \
+    python3-dev \
     curl \
     && rm -rf /var/lib/apt/lists/*
+
+# Create symbolic links for python
+RUN ln -s /usr/bin/python3 /usr/bin/python
 
 # Install Python dependencies
 COPY requirements.minimal.txt requirements.txt
