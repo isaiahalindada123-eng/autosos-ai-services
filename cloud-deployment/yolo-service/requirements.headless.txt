@@ -1,4 +1,4 @@
-# Minimal requirements for YOLOv8 service
+# Headless requirements for YOLOv8 service (no GUI dependencies)
 fastapi
 uvicorn
 ultralytics

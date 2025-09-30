@@ -1,7 +1,7 @@
-# Minimal requirements for YOLOv8 service
+# Minimal requirements for FaceNet service
 fastapi
 uvicorn
-ultralytics
+tensorflow-cpu
 opencv-python-headless
 numpy
 Pillow

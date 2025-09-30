@@ -2,32 +2,15 @@ FROM python:3.9-slim
 
 WORKDIR /app
 
-# Install system dependencies
+# Install minimal system dependencies
 RUN apt-get update && apt-get install -y \
     libglib2.0-0 \
-    libsm6 \
-    libxext6 \
-    libxrender-dev \
     libgomp1 \
-    libgl1-mesa-glx \
-    libglib2.0-0 \
-    libgtk-3-0 \
-    libavcodec-dev \
-    libavformat-dev \
-    libswscale-dev \
-    libv4l-dev \
-    libxvidcore-dev \
-    libx264-dev \
-    libjpeg-dev \
-    libpng-dev \
-    libtiff-dev \
-    libatlas-base-dev \
-    gfortran \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Python dependencies with conflict resolution
-COPY requirements.minimal.txt requirements.txt
+# Install Python dependencies
+COPY requirements.headless.txt requirements.txt
 RUN pip install --upgrade pip && \
     pip install --no-cache-dir typing-extensions==4.5.0 && \
     pip install --no-cache-dir torch torchvision --index-url https://download.pytorch.org/whl/cpu && \
@@ -35,9 +18,6 @@ RUN pip install --upgrade pip && \
 
 # Copy application code
 COPY . .
-
-# Create directories for models
-RUN mkdir -p /app/models
 
 # Create non-root user
 RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
