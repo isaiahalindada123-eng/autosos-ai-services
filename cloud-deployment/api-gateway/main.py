@@ -116,8 +116,8 @@ class ServiceResponse(BaseModel):
 # Dependency for request timing
 async def time_request():
     start_time = time.time()
-    yield
-    return time.time() - start_time
+    yield start_time
+    # The timing is handled in the endpoint
 
 # Health check functions
 async def check_service_health(service_name: str, url: str) -> bool:
@@ -167,7 +167,7 @@ async def register_face(
     user_id: str = Form(...),
     user_name: str = Form(...),
     file: UploadFile = File(...),
-    processing_time: float = Depends(time_request)
+    start_time: float = Depends(time_request)
 ):
     """Register a new face for facial recognition"""
     REQUEST_COUNT.labels(method="POST", endpoint="/api/facenet/register", status="200").inc()
@@ -199,7 +199,7 @@ async def register_face(
                 success=True,
                 data=result,
                 service="facenet",
-                processing_time=processing_time
+                processing_time=time.time() - start_time
             )
         else:
             raise HTTPException(status_code=response.status_code, detail=response.text)
@@ -213,7 +213,7 @@ async def register_face(
 @app.post("/api/facenet/recognize")
 async def recognize_face(
     file: UploadFile = File(...),
-    processing_time: float = Depends(time_request)
+    start_time: float = Depends(time_request)
 ):
     """Recognize a face from uploaded image"""
     REQUEST_COUNT.labels(method="POST", endpoint="/api/facenet/recognize", status="200").inc()
@@ -236,7 +236,7 @@ async def recognize_face(
                 success=True,
                 data=result,
                 service="facenet",
-                processing_time=processing_time
+                processing_time=time.time() - start_time
             )
         else:
             raise HTTPException(status_code=response.status_code, detail=response.text)
@@ -254,7 +254,7 @@ async def process_facial_payment(
     booking_id: str = Form(...),
     amount: float = Form(...),
     file: UploadFile = File(...),
-    processing_time: float = Depends(time_request)
+    start_time: float = Depends(time_request)
 ):
     """Process payment using facial recognition"""
     REQUEST_COUNT.labels(method="POST", endpoint="/api/facenet/process-payment", status="200").inc()
@@ -284,7 +284,7 @@ async def process_facial_payment(
                 success=True,
                 data=result,
                 service="facenet",
-                processing_time=processing_time
+                processing_time=time.time() - start_time
             )
         else:
             raise HTTPException(status_code=response.status_code, detail=response.text)
@@ -300,7 +300,7 @@ async def process_facial_payment(
 @app.post("/api/yolo/detect")
 async def detect_motorcycle_issues(
     file: UploadFile = File(...),
-    processing_time: float = Depends(time_request)
+    start_time: float = Depends(time_request)
 ):
     """Detect motorcycle issues using YOLOv8"""
     REQUEST_COUNT.labels(method="POST", endpoint="/api/yolo/detect", status="200").inc()
@@ -323,7 +323,7 @@ async def detect_motorcycle_issues(
                 success=True,
                 data=result,
                 service="yolo",
-                processing_time=processing_time
+                processing_time=time.time() - start_time
             )
         else:
             raise HTTPException(status_code=response.status_code, detail=response.text)
@@ -339,7 +339,7 @@ async def detect_motorcycle_issues(
 @app.post("/api/ollama/diagnostic")
 async def generate_diagnostic_response(
     request: DiagnosticRequest,
-    processing_time: float = Depends(time_request)
+    start_time: float = Depends(time_request)
 ):
     """Generate AI diagnostic response using Ollama"""
     REQUEST_COUNT.labels(method="POST", endpoint="/api/ollama/diagnostic", status="200").inc()
@@ -370,7 +370,7 @@ async def generate_diagnostic_response(
                 success=True,
                 data=result,
                 service="ollama",
-                processing_time=processing_time
+                processing_time=time.time() - start_time
             )
         else:
             raise HTTPException(status_code=response.status_code, detail=response.text)
@@ -403,7 +403,7 @@ async def get_available_models():
 async def complete_diagnostic(
     image_file: UploadFile = File(...),
     user_message: str = Form(...),
-    processing_time: float = Depends(time_request)
+    start_time: float = Depends(time_request)
 ):
     """Complete diagnostic using both YOLOv8 and Ollama"""
     REQUEST_COUNT.labels(method="POST", endpoint="/api/diagnostic/complete", status="200").inc()

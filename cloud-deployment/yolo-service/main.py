@@ -22,6 +22,7 @@ import redis
 import structlog
 from prometheus_client import Counter, Histogram, generate_latest, CONTENT_TYPE_LATEST
 from fastapi.responses import Response
+from supabase import create_client, Client
 
 # Configure structured logging
 structlog.configure(
@@ -53,6 +54,11 @@ REDIS_URL = os.getenv("REDIS_URL", "redis://redis:6379")
 MODEL_CACHE_DIR = os.getenv("MODEL_CACHE_DIR", "/app/models")
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+
+# Initialize Supabase client
+supabase_client = None
+if SUPABASE_URL and SUPABASE_KEY:
+    supabase_client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 # Initialize Redis
 redis_client = redis.from_url(REDIS_URL, decode_responses=True)
@@ -92,16 +98,26 @@ async def lifespan(app: FastAPI):
     logger.info("Starting YOLOv8 Service")
     
     try:
+        # Create models directory
+        os.makedirs(MODEL_CACHE_DIR, exist_ok=True)
+        
         # Initialize YOLOv8 model
         model_path = os.path.join(MODEL_CACHE_DIR, "motorcycle_diagnostic.pt")
         
-        # Download model if not exists
+        # Download model from Supabase Storage if not exists locally
         if not os.path.exists(model_path):
-            logger.info("Downloading YOLOv8 model...")
+            await download_yolo_model_from_supabase(model_path)
+        
+        # Load model
+        if os.path.exists(model_path):
+            yolo_model = YOLO(model_path)
+            logger.info("YOLOv8 model loaded from Supabase Storage")
+        else:
+            logger.info("Downloading fallback YOLOv8 model...")
             yolo_model = YOLO("yolov8n.pt")  # Use nano model for cloud deployment
             yolo_model.save(model_path)
-        else:
-            yolo_model = YOLO(model_path)
+            # Upload to Supabase Storage
+            await upload_yolo_model_to_supabase(model_path)
         
         logger.info("YOLOv8 model initialized successfully")
     except Exception as e:
@@ -113,6 +129,63 @@ async def lifespan(app: FastAPI):
     yield
     
     logger.info("Shutting down YOLOv8 Service")
+
+# Supabase Storage functions
+async def download_yolo_model_from_supabase(model_path: str):
+    """Download YOLOv8 model from Supabase Storage"""
+    if not supabase_client:
+        logger.warning("Supabase client not initialized, skipping model download")
+        return
+    
+    try:
+        logger.info("Downloading YOLOv8 model from Supabase Storage...")
+        
+        # Try to download custom trained model first
+        model_files = [
+            "autosos/models/yolov8/motorcycle_diagnostic.pt",
+            "autosos/models/yolov8/best.pt",
+            "autosos/models/yolov8/yolov8n.pt"
+        ]
+        
+        for model_file in model_files:
+            try:
+                response = supabase_client.storage.from_("autosos").download(model_file)
+                if response:
+                    with open(model_path, 'wb') as f:
+                        f.write(response)
+                    logger.info(f"Downloaded {model_file} to {model_path}")
+                    return
+            except Exception as e:
+                logger.warning(f"Failed to download {model_file}: {e}")
+                continue
+        
+        logger.warning("No YOLOv8 model found in Supabase Storage")
+        
+    except Exception as e:
+        logger.error(f"Failed to download YOLOv8 model from Supabase: {e}")
+
+async def upload_yolo_model_to_supabase(model_path: str):
+    """Upload YOLOv8 model to Supabase Storage"""
+    if not supabase_client:
+        logger.warning("Supabase client not initialized, skipping model upload")
+        return
+    
+    try:
+        logger.info("Uploading YOLOv8 model to Supabase Storage...")
+        
+        if os.path.exists(model_path):
+            with open(model_path, 'rb') as f:
+                model_data = f.read()
+            
+            supabase_client.storage.from_("autosos").upload(
+                "autosos/models/yolov8/motorcycle_diagnostic.pt",
+                model_data,
+                {"content-type": "application/octet-stream"}
+            )
+            logger.info("Uploaded YOLOv8 model to Supabase Storage")
+            
+    except Exception as e:
+        logger.error(f"Failed to upload YOLOv8 model to Supabase: {e}")
 
 # Initialize FastAPI app
 app = FastAPI(

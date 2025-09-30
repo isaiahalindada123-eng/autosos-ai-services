@@ -1,2 +1,5 @@
-# Ollama service doesn't need Python requirements
-# It uses the official Ollama Docker image
+fastapi==0.104.1
+uvicorn==0.24.0
+httpx==0.25.2
+structlog==23.2.0
+python-dotenv==1.0.0

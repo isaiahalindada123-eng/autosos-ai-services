@@ -1,0 +1,12 @@
+# Simple requirements without version conflicts
+fastapi
+uvicorn
+ultralytics
+opencv-python-headless
+numpy
+Pillow
+supabase
+redis
+python-multipart
+python-dotenv
+typing-extensions==4.5.0

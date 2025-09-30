@@ -1,7 +1,7 @@
-# Lightweight requirements for Render free tier
+# Minimal requirements for testing
 fastapi==0.104.1
 uvicorn==0.24.0
-tensorflow-cpu==2.13.0
+ultralytics==8.0.196
 opencv-python-headless==4.8.1.78
 numpy==1.24.3
 Pillow==10.0.1
