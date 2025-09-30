@@ -5,17 +5,13 @@ WORKDIR /app
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
     libglib2.0-0 \
-    libsm6 \
-    libxext6 \
-    libxrender-dev \
     libgomp1 \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Python dependencies with conflict resolution
+# Install Python dependencies
 COPY requirements.minimal.txt requirements.txt
 RUN pip install --upgrade pip && \
-    pip install --no-cache-dir typing-extensions==4.5.0 && \
     pip install --no-cache-dir -r requirements.txt
 
 # Copy application code
