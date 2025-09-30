@@ -3,7 +3,7 @@ FROM python:3.9
 
 WORKDIR /app
 
-# Install system dependencies for OpenCV and ultralytics
+# Install minimal system dependencies for OpenCV and ultralytics
 RUN apt-get update && apt-get install -y \
     libgl1-mesa-glx \
     libglib2.0-0 \
@@ -14,7 +14,6 @@ RUN apt-get update && apt-get install -y \
     libgcc-s1 \
     libgfortran5 \
     libatlas3-base \
-    libhdf5-103 \
     libopenblas0 \
     liblapack3 \
     libgtk-3-0 \
@@ -27,7 +26,6 @@ RUN apt-get update && apt-get install -y \
     libjpeg-dev \
     libpng-dev \
     libtiff-dev \
-    libatlas-base-dev \
     gfortran \
     curl \
     && rm -rf /var/lib/apt/lists/*
