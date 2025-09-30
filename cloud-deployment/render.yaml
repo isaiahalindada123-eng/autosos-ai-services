@@ -1,0 +1,69 @@
+services:
+  # API Gateway
+  - type: web
+    name: autosos-api-gateway
+    env: docker
+    dockerfilePath: ./api-gateway/Dockerfile
+    dockerContext: ./api-gateway
+    envVars:
+      - key: FACENET_SERVICE_URL
+        value: https://autosos-facenet.onrender.com
+      - key: YOLO_SERVICE_URL
+        value: https://autosos-yolo.onrender.com
+      - key: OLLAMA_SERVICE_URL
+        value: https://autosos-ollama.onrender.com
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: autosos-redis
+          property: connectionString
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_KEY
+        sync: false
+
+  # FaceNet Service
+  - type: web
+    name: autosos-facenet
+    env: docker
+    dockerfilePath: ./facenet-service/Dockerfile
+    dockerContext: ./facenet-service
+    envVars:
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_KEY
+        sync: false
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: autosos-redis
+          property: connectionString
+
+  # YOLOv8 Service
+  - type: web
+    name: autosos-yolo
+    env: docker
+    dockerfilePath: ./yolo-service/Dockerfile
+    dockerContext: ./yolo-service
+    envVars:
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_KEY
+        sync: false
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: autosos-redis
+          property: connectionString
+
+  # Ollama Service
+  - type: web
+    name: autosos-ollama
+    env: docker
+    dockerfilePath: ./ollama-service/Dockerfile
+    dockerContext: ./ollama-service
+
+  # Redis Database
+  - type: redis
+    name: autosos-redis
+    plan: free
