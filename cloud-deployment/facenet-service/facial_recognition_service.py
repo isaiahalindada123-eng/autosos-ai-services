@@ -27,8 +27,8 @@ class FaceNetService:
         self.model = None
         self.face_embeddings = {}
         self.face_database = {}
-        self.model_path = os.getenv("MODEL_PATH", "/app/models/facenet_mobile.h5")
-        self.database_path = os.getenv("DATABASE_PATH", "/app/models/face_embeddings.pkl")
+        self.model_path = os.getenv("MODEL_PATH", "autosos/models/facenet/facenet_mobile.h5")
+        self.database_path = os.getenv("DATABASE_PATH", "autosos/models/facenet/face_embeddings.pkl")
         self.confidence_threshold = 0.8
         self.similarity_threshold = 0.6
         
@@ -49,35 +49,11 @@ class FaceNetService:
                 self.supabase_client = create_client(self.supabase_url, self.supabase_key)
                 self.logger.info("Supabase client initialized")
             
-            # Create models directory if it doesn't exist
-            os.makedirs(os.path.dirname(self.model_path), exist_ok=True)
+            # Load model from Supabase Storage
+            self._load_model_from_supabase()
             
-            # Download model from Supabase Storage if not exists locally
-            if not os.path.exists(self.model_path):
-                self._download_model_from_supabase()
-            
-            # Load model
-            if os.path.exists(self.model_path):
-                self.logger.info(f"Loading FaceNet model from {self.model_path}")
-                self.model = load_model(self.model_path)
-            else:
-                self.logger.info("Creating new FaceNet model")
-                self.model = self._create_facenet_model()
-                self.model.save(self.model_path)
-                # Upload to Supabase Storage
-                self._upload_model_to_supabase()
-            
-            # Load face database
-            if os.path.exists(self.database_path):
-                self.logger.info(f"Loading face database from {self.database_path}")
-                with open(self.database_path, 'rb') as f:
-                    data = pickle.load(f)
-                    self.face_embeddings = data.get('embeddings', {})
-                    self.face_database = data.get('database', {})
-            else:
-                self.logger.info("Creating new face database")
-                self.face_embeddings = {}
-                self.face_database = {}
+            # Load face database from Supabase Storage
+            self._load_database_from_supabase()
                 
             self.logger.info(f"FaceNet service initialized with {len(self.face_database)} faces")
             
@@ -85,6 +61,60 @@ class FaceNetService:
             self.logger.error(f"Failed to initialize FaceNet service: {e}")
             raise
     
+    def _load_model_from_supabase(self):
+        """Load model from Supabase Storage"""
+        try:
+            if self.supabase_client:
+                # Try to download model from Supabase Storage
+                try:
+                    model_response = self.supabase_client.storage.from_("autosos").download(self.model_path)
+                    if model_response:
+                        # Save to temporary local file for loading
+                        temp_model_path = "/tmp/facenet_mobile.h5"
+                        with open(temp_model_path, 'wb') as f:
+                            f.write(model_response)
+                        
+                        self.logger.info(f"Loading FaceNet model from Supabase Storage: {self.model_path}")
+                        self.model = load_model(temp_model_path)
+                        self.logger.info("FaceNet model loaded successfully from Supabase")
+                        return
+                except Exception as e:
+                    self.logger.warning(f"Failed to load model from Supabase Storage: {e}")
+            
+            # Fallback: create new model
+            self.logger.info("Creating new FaceNet model")
+            self.model = self._create_facenet_model()
+            self._upload_model_to_supabase()
+            
+        except Exception as e:
+            self.logger.error(f"Failed to load model: {e}")
+            raise
+
+    def _load_database_from_supabase(self):
+        """Load face database from Supabase Storage"""
+        try:
+            if self.supabase_client:
+                # Try to download database from Supabase Storage
+                try:
+                    db_response = self.supabase_client.storage.from_("autosos").download(self.database_path)
+                    if db_response:
+                        data = pickle.loads(db_response)
+                        self.face_embeddings = data.get('embeddings', {})
+                        self.face_database = data.get('database', {})
+                        self.logger.info(f"Loaded face database from Supabase Storage: {len(self.face_database)} faces")
+                        return
+                except Exception as e:
+                    self.logger.warning(f"Failed to load database from Supabase Storage: {e}")
+            
+            # Fallback: create new database
+            self.logger.info("Creating new face database")
+            self.face_embeddings = {}
+            self.face_database = {}
+            
+        except Exception as e:
+            self.logger.error(f"Failed to load database: {e}")
+            raise
+
     def _create_facenet_model(self):
         """Create a simple FaceNet-like model for demonstration"""
         from tensorflow.keras.applications import MobileNetV2
@@ -161,32 +191,25 @@ class FaceNetService:
         try:
             self.logger.info("Uploading FaceNet model to Supabase Storage...")
             
-            # Upload model file
-            if os.path.exists(self.model_path):
-                with open(self.model_path, 'rb') as f:
-                    model_data = f.read()
-                
-                self.supabase_client.storage.from_("autosos").upload(
-                    "autosos/models/facenet/facenet_mobile.h5",
-                    model_data,
-                    {"content-type": "application/octet-stream"}
-                )
-                self.logger.info("Uploaded FaceNet model to Supabase Storage")
+            # Save model to temporary file and upload
+            temp_model_path = "/tmp/facenet_mobile.h5"
+            self.model.save(temp_model_path)
             
-            # Upload face database
-            if os.path.exists(self.database_path):
-                with open(self.database_path, 'rb') as f:
-                    db_data = f.read()
-                
-                self.supabase_client.storage.from_("autosos").upload(
-                    "autosos/models/facenet/face_embeddings.pkl",
-                    db_data,
-                    {"content-type": "application/octet-stream"}
-                )
-                self.logger.info("Uploaded face database to Supabase Storage")
+            with open(temp_model_path, 'rb') as f:
+                model_data = f.read()
+            
+            self.supabase_client.storage.from_("autosos").upload(
+                self.model_path,
+                model_data,
+                {"content-type": "application/octet-stream"}
+            )
+            self.logger.info(f"Uploaded FaceNet model to Supabase Storage: {self.model_path}")
+            
+            # Clean up temporary file
+            os.remove(temp_model_path)
                 
         except Exception as e:
-            self.logger.error(f"Failed to upload models to Supabase: {e}")
+            self.logger.error(f"Failed to upload model to Supabase Storage: {e}")
     
     def _preprocess_image(self, image: np.ndarray) -> np.ndarray:
         """Preprocess image for FaceNet model"""
@@ -316,18 +339,25 @@ class FaceNetService:
         return len(self.face_database)
     
     def _save_database(self):
-        """Save face database to disk"""
+        """Save face database to Supabase Storage"""
         try:
             data = {
                 'embeddings': self.face_embeddings,
                 'database': self.face_database
             }
             
-            with open(self.database_path, 'wb') as f:
-                pickle.dump(data, f)
+            # Save directly to Supabase Storage
+            if self.supabase_client:
+                db_data = pickle.dumps(data)
+                self.supabase_client.storage.from_("autosos").upload(
+                    self.database_path,
+                    db_data,
+                    {"content-type": "application/octet-stream"}
+                )
+                self.logger.info(f"Face database saved to Supabase Storage: {self.database_path}")
+            else:
+                self.logger.warning("Supabase client not available, database not saved")
                 
-            self.logger.info("Face database saved successfully")
-            
         except Exception as e:
             self.logger.error(f"Failed to save face database: {e}")
     
@@ -383,3 +413,28 @@ class FaceNetService:
                 "success": False,
                 "error": str(e)
             }
+    
+    def is_face_registered(self, user_id: str) -> bool:
+        """Check if a user has a registered face"""
+        try:
+            # Check local database first
+            if user_id in self.face_database:
+                return True
+            
+            # Check Supabase database if available
+            if self.supabase_client:
+                try:
+                    result = self.supabase_client.rpc('get_face_embedding', {
+                        'p_user_id': user_id
+                    }).execute()
+                    
+                    if result.data and len(result.data) > 0:
+                        return True
+                except Exception as e:
+                    self.logger.warning(f"Failed to check Supabase for user {user_id}: {e}")
+            
+            return False
+            
+        except Exception as e:
+            self.logger.error(f"Error checking face registration for user {user_id}: {e}")
+            return False

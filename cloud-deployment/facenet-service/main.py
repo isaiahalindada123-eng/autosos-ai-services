@@ -424,6 +424,27 @@ async def detect_base64(data: Dict[str, Any]):
         logger.error("YOLOv8 detection failed", error=str(e))
         raise HTTPException(status_code=500, detail="Internal server error")
 
+@app.get("/check-face-registration/{user_id}")
+async def check_face_registration(user_id: str):
+    """Check if a user has a registered face"""
+    if facenet_service is None:
+        raise HTTPException(status_code=503, detail="FaceNet service not initialized")
+    
+    try:
+        # Check if user has registered face
+        has_face = facenet_service.is_face_registered(user_id)
+        
+        return {
+            "success": True,
+            "user_id": user_id,
+            "has_registered_face": has_face,
+            "message": "Face registration status checked successfully"
+        }
+        
+    except Exception as e:
+        logger.error("Face registration check failed", error=str(e), user_id=user_id)
+        raise HTTPException(status_code=500, detail="Internal server error")
+
 @app.get("/face-count")
 async def get_face_count():
     """Get the number of registered faces"""

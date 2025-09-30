@@ -326,6 +326,40 @@ async def process_facial_payment(
         logger.error("Facial payment processing failed", error=str(e))
         raise HTTPException(status_code=500, detail="Internal server error")
 
+@app.get("/api/facenet/check-face-registration/{user_id}")
+async def check_face_registration(
+    user_id: str,
+    start_time: float = Depends(time_request)
+):
+    """Check if a user has a registered face"""
+    REQUEST_COUNT.labels(method="GET", endpoint="/api/facenet/check-face-registration", status="200").inc()
+    
+    if not service_health["facenet"]:
+        raise HTTPException(status_code=503, detail="FaceNet service unavailable")
+    
+    try:
+        # Forward request to FaceNet service
+        response = await http_client.get(
+            f"{FACENET_SERVICE_URL}/check-face-registration/{user_id}"
+        )
+        
+        if response.status_code == 200:
+            result = response.json()
+            return ServiceResponse(
+                success=True,
+                data=result,
+                service="facenet",
+                processing_time=time.time() - start_time
+            )
+        else:
+            raise HTTPException(status_code=response.status_code, detail=response.text)
+            
+    except httpx.TimeoutException:
+        raise HTTPException(status_code=504, detail="FaceNet service timeout")
+    except Exception as e:
+        logger.error("Face registration check failed", error=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
+
 # YOLOv8 Endpoints
 
 @app.post("/api/yolo/detect")
