@@ -165,6 +165,7 @@ async def download_yolo_model_from_supabase(model_path: str):
         
         # Try to download custom trained model first
         model_files = [
+            "autosos/models/yolov8/motrocycle_diagnostic_v1.pt",
             "autosos/models/yolov8/motorcycle_diagnostic.pt",
             "autosos/models/yolov8/best.pt",
             "autosos/models/yolov8/yolov8n.pt"
