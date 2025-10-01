@@ -412,8 +412,14 @@ async def detect_motorcycle_issues(
             annotated_image = create_annotated_image(image, detections)
             response_data["annotated_image"] = annotated_image
         
-        # Cache the result
-        cache_key = f"yolo:detect:{hash(image_data.tobytes())}"
+        # Cache the result - fix for bytes object error
+        if hasattr(image_data, 'tobytes'):
+            # image_data is a numpy array
+            cache_key = f"yolo:detect:{hash(image_data.tobytes())}"
+        else:
+            # image_data is already bytes
+            cache_key = f"yolo:detect:{hash(image_data)}"
+        
         await redis_client.setex(
             cache_key,
             3600,  # 1 hour
