@@ -2,6 +2,7 @@
 """
 YOLOv8 Service for AutoSOS
 Cloud-deployed motorcycle diagnostic service
+Aligned with local test structure
 """
 
 import os
@@ -68,10 +69,6 @@ structlog.configure(
 
 logger = structlog.get_logger()
 
-# Prometheus metrics
-REQUEST_COUNT = Counter('yolo_requests_total', 'Total YOLOv8 requests', ['method', 'endpoint', 'status'])
-REQUEST_DURATION = Histogram('yolo_request_duration_seconds', 'YOLOv8 request duration', ['method', 'endpoint'])
-
 # Configuration
 REDIS_URL = os.getenv("REDIS_URL", "redis://redis:6379")
 MODEL_CACHE_DIR = os.getenv("MODEL_CACHE_DIR", "/app/models")
@@ -83,10 +80,17 @@ supabase_client = None
 if SUPABASE_URL and SUPABASE_KEY:
     supabase_client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-# Initialize Redis
-redis_client = redis.from_url(REDIS_URL, decode_responses=True)
+# Initialize Redis with error handling
+try:
+    redis_client = redis.from_url(REDIS_URL, decode_responses=True)
+    # Test the connection
+    redis_client.ping()
+    logger.info("Redis client initialized successfully")
+except Exception as e:
+    logger.warning(f"Redis client initialization failed: {e}")
+    redis_client = None
 
-# Class names for motorcycle issues
+# Class names for motorcycle issues (aligned with local test)
 CLASS_NAMES = {
     0: "broken_headlights_tail_lights",
     1: "broken_side_mirror", 
@@ -168,30 +172,16 @@ def download_yolo_model_from_supabase(model_path: str):
         return
     
     try:
-        logger.info("Downloading YOLOv8 model from Supabase Storage...")
+        # Try to download the model from Supabase Storage
+        response = supabase_client.storage.from_("autosos").download("yolo_models/motorcycle_diagnostic.pt")
         
-        # Try to download custom trained model first
-        model_files = [
-            "autosos/models/yolov8/motorcycle_diagnostic_v1.pt",
-            "autosos/models/yolov8/motrocycle_diagnostic_v1.pt",
-            "autosos/models/yolov8/motorcycle_diagnostic.pt",
-            "autosos/models/yolov8/best.pt",
-            "autosos/models/yolov8/yolov8n.pt"
-        ]
-        
-        for model_file in model_files:
-            try:
-                response = supabase_client.storage.from_("autosos").download(model_file)
-                if response:
-                    with open(model_path, 'wb') as f:
-                        f.write(response)
-                    logger.info(f"Downloaded {model_file} to {model_path}")
-                    return
-            except Exception as e:
-                logger.warning(f"Failed to download {model_file}: {e}")
-                continue
-        
-        logger.warning("No YOLOv8 model found in Supabase Storage")
+        if response:
+            # Save the model to local path
+            with open(model_path, 'wb') as f:
+                f.write(response)
+            logger.info("YOLOv8 model downloaded from Supabase Storage")
+        else:
+            logger.warning("No YOLOv8 model found in Supabase Storage")
         
     except Exception as e:
         logger.error(f"Failed to download YOLOv8 model from Supabase: {e}")
@@ -203,34 +193,37 @@ def upload_yolo_model_to_supabase(model_path: str):
         return
     
     try:
-        logger.info("Uploading YOLOv8 model to Supabase Storage...")
+        # Read the model file
+        with open(model_path, 'rb') as f:
+            model_data = f.read()
         
-        if os.path.exists(model_path):
-            with open(model_path, 'rb') as f:
-                model_data = f.read()
-            
-            supabase_client.storage.from_("autosos").upload(
-                "autosos/models/yolov8/motorcycle_diagnostic.pt",
-                model_data,
-                {"content-type": "application/octet-stream"}
-            )
-            logger.info("Uploaded YOLOv8 model to Supabase Storage")
-            
+        # Upload to Supabase Storage
+        supabase_client.storage.from_("autosos").upload(
+            "yolo_models/motorcycle_diagnostic.pt",
+            model_data,
+            {"content-type": "application/octet-stream"}
+        )
+        logger.info("YOLOv8 model uploaded to Supabase Storage")
+        
     except Exception as e:
         logger.error(f"Failed to upload YOLOv8 model to Supabase: {e}")
 
-# Initialize FastAPI app
+# Prometheus metrics
+REQUEST_COUNT = Counter('yolo_requests_total', 'Total YOLO requests', ['method', 'endpoint', 'status'])
+REQUEST_DURATION = Histogram('yolo_request_duration_seconds', 'YOLO request duration')
+
+# FastAPI app
 app = FastAPI(
     title="AutoSOS YOLOv8 Service",
-    description="Motorcycle diagnostic service using YOLOv8",
+    description="Motorcycle diagnostic detection service using YOLOv8",
     version="1.0.0",
     lifespan=lifespan
 )
 
-# Add CORS middleware
+# CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Configure properly for production
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -241,69 +234,53 @@ def process_detection_results(results, confidence_threshold: float = 0.5) -> Lis
     detections = []
     
     for result in results:
-        boxes = result.boxes
-        if boxes is not None:
+        if hasattr(result, 'boxes') and result.boxes is not None:
+            boxes = result.boxes
             for box in boxes:
-                # Get box coordinates
-                x1, y1, x2, y2 = box.xyxy[0].cpu().numpy()
-                confidence = box.conf[0].cpu().numpy()
-                class_id = int(box.cls[0].cpu().numpy())
-                
-                if confidence >= confidence_threshold:
-                    detection = {
-                        "bbox": [float(x1), float(y1), float(x2), float(y2)],
-                        "confidence": float(confidence),
-                        "class_id": class_id,
-                        "class_name": CLASS_NAMES.get(class_id, f"class_{class_id}"),
-                        "class_display_name": CLASS_DISPLAY_NAMES.get(class_id, f"Class {class_id}"),
-                        "severity": get_severity_level(class_id, confidence)
-                    }
-                    detections.append(detection)
+                # Get box data
+                if hasattr(box, 'xyxy'):
+                    bbox = box.xyxy[0].cpu().numpy().tolist()
+                    conf = box.conf[0].cpu().numpy().item()
+                    cls = int(box.cls[0].cpu().numpy().item())
+                    
+                    # Filter by confidence
+                    if conf >= confidence_threshold:
+                        # Get class name
+                        class_name = CLASS_NAMES.get(cls, f"class_{cls}")
+                        display_name = CLASS_DISPLAY_NAMES.get(cls, f"Class {cls}")
+                        
+                        detection = {
+                            "bbox": bbox,
+                            "confidence": float(conf),
+                            "class": cls,
+                            "class_name": class_name,
+                            "display_name": display_name,
+                            "color": CLASS_COLORS.get(cls, (255, 255, 255))
+                        }
+                        detections.append(detection)
     
     return detections
 
-def get_severity_level(class_id: int, confidence: float) -> str:
-    """Determine severity level based on class and confidence"""
-    # Critical issues
-    if class_id in [2, 3]:  # flat_tire, oil_leak
-        return "Critical" if confidence > 0.8 else "High"
-    
-    # High severity issues
-    if class_id == 0:  # broken_headlights_tail_lights
-        return "High" if confidence > 0.7 else "Medium"
-    
-    # Medium severity issues
-    if class_id == 1:  # broken_side_mirror
-        return "Medium" if confidence > 0.6 else "Low"
-    
-    return "Low"
-
 def create_annotated_image(image: np.ndarray, detections: List[Dict[str, Any]]) -> str:
-    """Create annotated image with bounding boxes"""
-    if not OPENCV_AVAILABLE:
-        # Return original image if OpenCV is not available
-        return base64.b64encode(image.tobytes()).decode('utf-8')
-    
+    """Create annotated image with detection boxes"""
     annotated_image = image.copy()
     
     for detection in detections:
-        x1, y1, x2, y2 = detection["bbox"]
-        class_id = detection["class_id"]
-        confidence = detection["confidence"]
-        class_name = detection["class_display_name"]
-        
-        # Get color for this class
-        color = CLASS_COLORS.get(class_id, (255, 255, 255))
+        bbox = detection["bbox"]
+        conf = detection["confidence"]
+        class_name = detection["display_name"]
+        color = detection["color"]
         
         # Draw bounding box
-        cv2.rectangle(annotated_image, (int(x1), int(y1)), (int(x2), int(y2)), color, 2)
+        x1, y1, x2, y2 = map(int, bbox)
+        cv2.rectangle(annotated_image, (x1, y1), (x2, y2), color, 2)
         
         # Draw label
-        label = f"{class_name}: {confidence:.2f}"
+        label = f"{class_name}: {conf:.2f}"
         label_size = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 2)[0]
-        cv2.rectangle(annotated_image, (int(x1), int(y1) - label_size[1] - 10), 
-                     (int(x1) + label_size[0], int(y1)), color, -1)
-        cv2.putText(annotated_image, label, (int(x1), int(y1) - 5), 
+        cv2.rectangle(annotated_image, (x1, y1 - label_size[1] - 10), 
+                     (x1 + label_size[0], y1), color, -1)
+        cv2.putText(annotated_image, label, (x1, y1 - 5), 
                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
     
     # Encode as base64
@@ -321,8 +298,6 @@ async def health_check():
     
     return {
         "status": "healthy",
-        "service": "yolo",
-        "opencv_available": OPENCV_AVAILABLE,
         "timestamp": time.time(),
         "model_loaded": yolo_model is not None,
         "model_name": getattr(yolo_model, 'model_name', 'motorcycle_diagnostic_v1') if yolo_model else None
@@ -338,30 +313,23 @@ async def model_info():
         )
     
     try:
-        # Get model information
-        model_info = {
+        info = {
             "model_loaded": True,
-            "model_name": "motorcycle_diagnostic_v1",
-            "model_type": "YOLOv8",
-            "input_size": "640x640",
-            "classes": [
-                "brake_pad_wear",
-                "chain_loose", 
-                "tire_wear",
-                "oil_leak",
-                "battery_corrosion",
-                "light_damage",
-                "mirror_damage",
-                "exhaust_damage"
-            ],
-            "opencv_available": OPENCV_AVAILABLE,
-            "timestamp": time.time()
+            "model_type": str(type(yolo_model)),
+            "class_names": CLASS_NAMES,
+            "class_display_names": CLASS_DISPLAY_NAMES,
+            "num_classes": len(CLASS_NAMES)
         }
         
-        return model_info
+        # Try to get model names/classes
+        if hasattr(yolo_model, 'names'):
+            info['model_classes'] = yolo_model.names
+            info['model_num_classes'] = len(yolo_model.names)
+        
+        return info
         
     except Exception as e:
-        logger.error("Failed to get model info", error=str(e))
+        logger.error("Failed to get model information", error=str(e))
         return JSONResponse(
             status_code=500,
             content={"error": "Failed to get model information"}
@@ -396,7 +364,9 @@ async def detect_motorcycle_issues(
             raise HTTPException(status_code=400, detail="Invalid image format")
         
         # Run YOLOv8 detection
+        start_time = time.time()
         results = yolo_model(image, conf=confidence, verbose=False)
+        detection_time = time.time() - start_time
         
         # Process results
         detections = process_detection_results(results, confidence)
@@ -411,6 +381,7 @@ async def detect_motorcycle_issues(
                 "height": image.shape[0]
             },
             "confidence_threshold": confidence,
+            "detection_time": detection_time,
             "processing_time": time.time()
         }
         
@@ -419,23 +390,26 @@ async def detect_motorcycle_issues(
             annotated_image = create_annotated_image(image, detections)
             response_data["annotated_image"] = annotated_image
         
-        # Cache the result - fix for bytes object error
-        if hasattr(image_data, 'tobytes'):
-            # image_data is a numpy array
-            cache_key = f"yolo:detect:{hash(image_data.tobytes())}"
-        else:
-            # image_data is already bytes
-            cache_key = f"yolo:detect:{hash(image_data)}"
-        
-        await redis_client.setex(
-            cache_key,
-            3600,  # 1 hour
-            json.dumps(response_data)
-        )
+        # Cache the result (with error handling)
+        if redis_client:
+            try:
+                if hasattr(image_data, 'tobytes'):
+                    cache_key = f"yolo:detect:{hash(image_data.tobytes())}"
+                else:
+                    cache_key = f"yolo:detect:{hash(image_data)}"
+                
+                redis_client.setex(
+                    cache_key,
+                    3600,  # 1 hour
+                    json.dumps(response_data)
+                )
+            except Exception as cache_error:
+                logger.warning("Failed to cache result", error=str(cache_error))
         
         logger.info("YOLOv8 detection completed", 
                    detection_count=len(detections),
-                   confidence_threshold=confidence)
+                   confidence_threshold=confidence,
+                   detection_time=detection_time)
         
         return response_data
         
@@ -468,7 +442,9 @@ async def detect_motorcycle_issues_base64(
         include_annotated_image = data.get("include_annotated_image", True)
         
         # Run YOLOv8 detection
+        start_time = time.time()
         results = yolo_model(image, conf=confidence, verbose=False)
+        detection_time = time.time() - start_time
         
         # Process results
         detections = process_detection_results(results, confidence)
@@ -483,6 +459,7 @@ async def detect_motorcycle_issues_base64(
                 "height": image.shape[0]
             },
             "confidence_threshold": confidence,
+            "detection_time": detection_time,
             "processing_time": time.time()
         }
         
@@ -493,7 +470,8 @@ async def detect_motorcycle_issues_base64(
         
         logger.info("YOLOv8 detection completed", 
                    detection_count=len(detections),
-                   confidence_threshold=confidence)
+                   confidence_threshold=confidence,
+                   detection_time=detection_time)
         
         return response_data
         
@@ -519,10 +497,11 @@ async def get_model_info():
     
     return {
         "model_loaded": True,
-        "model_type": "YOLOv8",
-        "classes": list(CLASS_NAMES.values()),
-        "input_size": "640x640",
-        "framework": "PyTorch"
+        "model_type": str(type(yolo_model)),
+        "class_names": CLASS_NAMES,
+        "class_display_names": CLASS_DISPLAY_NAMES,
+        "num_classes": len(CLASS_NAMES),
+        "model_classes": yolo_model.names if hasattr(yolo_model, 'names') else None
     }
 
 if __name__ == "__main__":
