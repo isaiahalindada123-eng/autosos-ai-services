@@ -81,6 +81,7 @@ if SUPABASE_URL and SUPABASE_KEY:
     supabase_client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 # Initialize Redis with error handling
+redis_client = None
 try:
     redis_client = redis.from_url(REDIS_URL, decode_responses=True)
     # Test the connection
@@ -391,7 +392,7 @@ async def detect_motorcycle_issues(
             response_data["annotated_image"] = annotated_image
         
         # Cache the result (with error handling)
-        if redis_client:
+        if redis_client is not None:
             try:
                 if hasattr(image_data, 'tobytes'):
                     cache_key = f"yolo:detect:{hash(image_data.tobytes())}"
