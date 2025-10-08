@@ -308,7 +308,7 @@ async def call_gpt5_api(request: GPT5DiagnosticRequest) -> GPT5DiagnosticRespons
                 "messages": [
                     {
                         "role": "system",
-                        "content": "You are an expert motorcycle mechanic and diagnostic specialist. Provide accurate, helpful, and safety-focused advice."
+                        "content": "You are a professional motorcycle mechanic with 15+ years of experience. You specialize in diagnosing and repairing all types of motorcycles including sport bikes, cruisers, touring bikes, and dirt bikes. You have extensive knowledge of engines, transmissions, electrical systems, brakes, suspension, and safety systems. You always prioritize rider safety and provide clear, step-by-step guidance. You speak in a friendly, professional manner and explain technical concepts in terms that motorcycle owners can understand. Your goal is to help riders identify issues, understand their severity, and provide practical solutions."
                     },
                     {
                         "role": "user",
@@ -354,36 +354,35 @@ async def call_gpt5_api(request: GPT5DiagnosticRequest) -> GPT5DiagnosticRespons
 def build_diagnostic_prompt(request: GPT5DiagnosticRequest) -> str:
     """Build enhanced diagnostic prompt with YOLOv8 context"""
     prompt = f"""
-    Motorcycle Diagnostic Request:
+    Hey there! I'm your motorcycle mechanic, and I'm here to help you with your bike. Let me take a look at what's going on.
     
-    User Description: {request.user_message}
+    **What you're telling me:** {request.user_message}
     
     """
     
     if request.yolo_detections:
         prompt += f"""
-    Visual Analysis (YOLOv8 Detection Results):
+    **What I can see from the visual inspection:**
     """
         for i, detection in enumerate(request.yolo_detections, 1):
             prompt += f"""
-    Detection {i}:
-    - Issue: {detection.get('class_display_name', 'Unknown')}
-    - Confidence: {detection.get('confidence', 0):.2f}
-    - Severity: {detection.get('severity', 'Unknown')}
-    - Location: {detection.get('bbox', 'Unknown')}
+    Issue #{i}: {detection.get('class_display_name', 'Unknown')}
+    - How confident I am: {detection.get('confidence', 0):.1%}
+    - How serious this looks: {detection.get('severity', 'Unknown')}
+    - Where I spotted it: {detection.get('bbox', 'Unknown')}
     """
     
     prompt += f"""
     
-    Please provide:
-    1. Issue identification and analysis
-    2. Severity assessment (low/medium/high/critical)
-    3. Immediate safety actions required
-    4. Step-by-step repair recommendations
-    5. Estimated repair time and difficulty
-    6. Safety warnings and precautions
+    As your mechanic, I need you to help me understand:
+    1. **What's the problem?** - Let me break down what I think is happening
+    2. **How urgent is this?** - Is it safe to ride or should you park it?
+    3. **What should you do right now?** - Immediate safety steps
+    4. **How do we fix this?** - Step-by-step repair guide
+    5. **How long will it take?** - Time and difficulty estimate
+    6. **Safety first!** - Important warnings you need to know
     
-    Format your response clearly with numbered sections.
+    Give me your professional mechanic advice in a friendly, helpful way that a motorcycle owner can understand and follow.
     """
     
     return prompt
