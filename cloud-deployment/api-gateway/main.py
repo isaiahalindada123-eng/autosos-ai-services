@@ -436,6 +436,31 @@ def extract_immediate_actions(content: str) -> List[str]:
 
 # API Endpoints
 
+@app.get("/")
+async def root():
+    """Root endpoint with API information"""
+    return {
+        "service": "AutoSOS API Gateway",
+        "version": "1.0.0",
+        "status": "running",
+        "description": "Central API gateway for AutoSOS AI services",
+        "endpoints": {
+            "health": "/health",
+            "metrics": "/metrics",
+            "facenet": "/api/facenet/*",
+            "yolo": "/api/yolo/*",
+            "ollama": "/api/ollama/*",
+            "gpt5": "/api/gpt5/*",
+            "diagnostic": "/api/diagnostic/*"
+        },
+        "services": {
+            "facenet": "Facial recognition for payments",
+            "yolo": "Motorcycle diagnostic detection",
+            "ollama": "Local AI chat diagnostics",
+            "gpt5": "Advanced AI diagnostics with cost optimization"
+        }
+    }
+
 @app.get("/health")
 async def health_check():
     """Gateway health check"""
@@ -446,6 +471,59 @@ async def health_check():
         "gateway": True,
         "services": service_health,
         "timestamp": time.time()
+    }
+
+@app.get("/api")
+async def api_info():
+    """API documentation endpoint"""
+    return {
+        "title": "AutoSOS API Gateway",
+        "version": "1.0.0",
+        "description": "Central API gateway for AutoSOS motorcycle diagnostic services",
+        "documentation": {
+            "facenet": {
+                "description": "Facial recognition service for secure payments",
+                "endpoints": {
+                    "register": "POST /api/facenet/register",
+                    "recognize": "POST /api/facenet/recognize", 
+                    "process-payment": "POST /api/facenet/process-payment",
+                    "check-registration": "GET /api/facenet/check-face-registration/{user_id}",
+                    "remove-face": "DELETE /api/facenet/remove-face/{user_id}"
+                }
+            },
+            "yolo": {
+                "description": "YOLOv8 motorcycle diagnostic detection",
+                "endpoints": {
+                    "detect": "POST /api/yolo/detect",
+                    "detect-base64": "POST /api/yolo/detect-base64"
+                }
+            },
+            "ollama": {
+                "description": "Local AI chat diagnostics using Ollama",
+                "endpoints": {
+                    "diagnostic": "POST /api/ollama/diagnostic",
+                    "models": "GET /api/ollama/models"
+                }
+            },
+            "gpt5": {
+                "description": "Advanced AI diagnostics with GPT-5 and cost optimization",
+                "endpoints": {
+                    "diagnostic": "POST /api/gpt5/diagnostic",
+                    "cost-metrics": "GET /api/gpt5/cost-metrics"
+                }
+            },
+            "diagnostic": {
+                "description": "Combined diagnostic service (YOLOv8 + AI)",
+                "endpoints": {
+                    "complete": "POST /api/diagnostic/complete"
+                }
+            }
+        },
+        "status_endpoints": {
+            "health": "GET /health",
+            "metrics": "GET /metrics",
+            "root": "GET /"
+        }
     }
 
 @app.get("/metrics")
