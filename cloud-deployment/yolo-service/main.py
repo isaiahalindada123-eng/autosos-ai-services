@@ -137,7 +137,7 @@ async def lifespan(app: FastAPI):
             logger.info("YOLOv8 model loaded from cache")
         else:
             # Download model from Supabase Storage if not exists locally
-            await download_yolo_model_from_supabase(model_path)
+            download_yolo_model_from_supabase(model_path)
             
             if os.path.exists(model_path):
                 yolo_model = YOLO(model_path)
@@ -147,7 +147,7 @@ async def lifespan(app: FastAPI):
                 yolo_model = YOLO("yolov8n.pt")  # Use YOLOv8 nano as fallback
                 yolo_model.save(model_path)
                 # Upload to Supabase Storage
-                await upload_yolo_model_to_supabase(model_path)
+                upload_yolo_model_to_supabase(model_path)
         
         logger.info("YOLOv8 model initialized successfully")
     except Exception as e:
@@ -161,7 +161,7 @@ async def lifespan(app: FastAPI):
     logger.info("Shutting down YOLOv8 Service")
 
 # Supabase Storage functions
-async def download_yolo_model_from_supabase(model_path: str):
+def download_yolo_model_from_supabase(model_path: str):
     """Download YOLOv8 model from Supabase Storage"""
     if not supabase_client:
         logger.warning("Supabase client not initialized, skipping model download")
@@ -196,7 +196,7 @@ async def download_yolo_model_from_supabase(model_path: str):
     except Exception as e:
         logger.error(f"Failed to download YOLOv8 model from Supabase: {e}")
 
-async def upload_yolo_model_to_supabase(model_path: str):
+def upload_yolo_model_to_supabase(model_path: str):
     """Upload YOLOv8 model to Supabase Storage"""
     if not supabase_client:
         logger.warning("Supabase client not initialized, skipping model upload")
