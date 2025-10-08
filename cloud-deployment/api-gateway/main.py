@@ -260,7 +260,7 @@ async def call_gpt5_api(request: GPT5DiagnosticRequest) -> GPT5DiagnosticRespons
                 "Content-Type": "application/json"
             },
             json={
-                "model": "gpt-5",
+                "model": "gpt-4o-mini",  # Use GPT-4o-mini instead of non-existent GPT-5
                 "messages": [
                     {
                         "role": "system",
@@ -287,14 +287,14 @@ async def call_gpt5_api(request: GPT5DiagnosticRequest) -> GPT5DiagnosticRespons
         cost = estimate_gpt5_cost(result["usage"])
         
         # Track cost
-        track_gpt5_cost("gpt-5", "diagnostic", cost)
+        track_gpt5_cost("gpt-4o-mini", "diagnostic", cost)
         
         processing_time = time.time() - start_time
         
         return GPT5DiagnosticResponse(
             success=True,
             response=content,
-            model_used="gpt-5",
+            model_used="gpt-4o-mini",
             cost=cost,
             cached=False,
             processing_time=processing_time,
@@ -350,14 +350,14 @@ def build_diagnostic_prompt(request: GPT5DiagnosticRequest) -> str:
     return prompt
 
 def estimate_gpt5_cost(usage: Dict[str, Any]) -> float:
-    """Estimate GPT-5 API cost"""
-    # Rough estimation - adjust based on actual GPT-5 pricing
+    """Estimate GPT-4o-mini API cost"""
+    # GPT-4o-mini pricing: $0.00015 per 1K input tokens, $0.0006 per 1K output tokens
     prompt_tokens = usage.get("prompt_tokens", 0)
     completion_tokens = usage.get("completion_tokens", 0)
     
-    # Estimated pricing (adjust when GPT-5 pricing is released)
-    prompt_cost = prompt_tokens * 0.00001  # $0.01 per 1K tokens
-    completion_cost = completion_tokens * 0.00003  # $0.03 per 1K tokens
+    # Actual GPT-4o-mini pricing
+    prompt_cost = prompt_tokens * 0.00000015  # $0.00015 per 1K tokens
+    completion_cost = completion_tokens * 0.0000006  # $0.0006 per 1K tokens
     
     return prompt_cost + completion_cost
 
@@ -811,7 +811,7 @@ async def generate_gpt5_diagnostic(
         return cached_response
     
     try:
-        # Always use GPT-5 for diagnostics
+        # Always use GPT-4o-mini for diagnostics
         response = await call_gpt5_api(request)
         
         # Cache the response
@@ -890,7 +890,7 @@ async def complete_diagnostic(
             cached_response.cached = True
             ai_analysis = cached_response
         else:
-            # Always use GPT-5 for diagnostics
+            # Always use GPT-4o-mini for diagnostics
             ai_analysis = await call_gpt5_api(gpt5_request)
             
             # Cache the response
