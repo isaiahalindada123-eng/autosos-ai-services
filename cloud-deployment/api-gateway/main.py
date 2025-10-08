@@ -374,15 +374,21 @@ def build_diagnostic_prompt(request: GPT5DiagnosticRequest) -> str:
     
     prompt += f"""
     
-    As your mechanic, I need you to help me understand:
-    1. **What's the problem?** - Let me break down what I think is happening
-    2. **How urgent is this?** - Is it safe to ride or should you park it?
-    3. **What should you do right now?** - Immediate safety steps
-    4. **How do we fix this?** - Step-by-step repair guide
-    5. **How long will it take?** - Time and difficulty estimate
-    6. **Safety first!** - Important warnings you need to know
+    Please answer in this EXACT format:
     
-    Give me your professional mechanic advice in a friendly, helpful way that a motorcycle owner can understand and follow.
+    **What is the problem?**
+    [Explain the specific issue you've identified]
+    
+    **How to fix or remedy the problem?**
+    [Give step-by-step instructions to fix it]
+    
+    **Is mechanic needed?**
+    [Yes/No - and explain why]
+    
+    **Can I ride the motorcycle?**
+    [Yes/No - and explain the safety implications]
+    
+    Keep your response concise and practical. Focus on what the rider needs to know right now.
     """
     
     return prompt
