@@ -52,7 +52,6 @@ GPT5_COST_TRACKER = Counter('gpt5_cost_total', 'Total GPT-5 cost in USD', ['mode
 # Service URLs
 FACENET_SERVICE_URL = os.getenv("FACENET_SERVICE_URL", "http://facenet-service:8001")
 YOLO_SERVICE_URL = os.getenv("YOLO_SERVICE_URL", "http://yolo-service:8002")
-OLLAMA_SERVICE_URL = os.getenv("OLLAMA_SERVICE_URL", "http://ollama-service:11434")
 REDIS_URL = os.getenv("REDIS_URL", "redis://redis:6379")
 
 # GPT-5 Configuration
@@ -72,7 +71,6 @@ http_client = httpx.AsyncClient(timeout=30.0)
 service_health = {
     "facenet": False,
     "yolo": False,
-    "ollama": False,
     "gpt5": False
 }
 
@@ -107,13 +105,6 @@ app.add_middleware(
 )
 
 # Pydantic models
-class DiagnosticRequest(BaseModel):
-    user_message: str
-    context: Optional[Dict[str, Any]] = None
-    model: Optional[str] = "llama3.2:3b"
-    user_tier: str = "free"  # free, premium, emergency
-    emergency_level: str = "normal"  # normal, urgent, critical
-    yolo_detections: Optional[List[Dict[str, Any]]] = None
 
 class GPT5DiagnosticRequest(BaseModel):
     user_message: str
@@ -177,7 +168,6 @@ async def check_all_services():
     tasks = [
         check_service_health("facenet", FACENET_SERVICE_URL),
         check_service_health("yolo", YOLO_SERVICE_URL),
-        check_service_health("ollama", OLLAMA_SERVICE_URL),
         check_gpt5_health()
     ]
     await asyncio.gather(*tasks, return_exceptions=True)
@@ -227,40 +217,6 @@ def get_monthly_gpt5_cost() -> float:
     
     return total_cost
 
-def should_use_gpt5(request: GPT5DiagnosticRequest) -> bool:
-    """Determine if request should use GPT-5 or fallback to Ollama"""
-    if not service_health["gpt5"]:
-        return False
-    
-    monthly_cost = get_monthly_gpt5_cost()
-    
-    # Emergency situations always use GPT-5
-    if request.emergency_level == "critical":
-        return True
-    
-    # Premium users get GPT-5 access
-    if request.user_tier == "premium":
-        return True
-    
-    # Check cost limits
-    if monthly_cost >= MAX_MONTHLY_COST:
-        logger.warning("Monthly GPT-5 cost limit reached, using Ollama fallback")
-        return False
-    
-    # Complex requests with YOLOv8 detections
-    if request.yolo_detections and len(request.yolo_detections) > 0:
-        return True
-    
-    # Check if request complexity warrants GPT-5
-    complex_keywords = [
-        "emergency", "urgent", "critical", "dangerous", "safety",
-        "complex", "multiple", "advanced", "detailed", "comprehensive"
-    ]
-    
-    if any(keyword in request.user_message.lower() for keyword in complex_keywords):
-        return True
-    
-    return False
 
 def generate_cache_key(request: GPT5DiagnosticRequest) -> str:
     """Generate cache key for GPT-5 request"""
@@ -455,14 +411,12 @@ async def root():
             "metrics": "/metrics",
             "facenet": "/api/facenet/*",
             "yolo": "/api/yolo/*",
-            "ollama": "/api/ollama/*",
             "gpt5": "/api/gpt5/*",
             "diagnostic": "/api/diagnostic/*"
         },
         "services": {
             "facenet": "Facial recognition for payments",
             "yolo": "Motorcycle diagnostic detection",
-            "ollama": "Local AI chat diagnostics",
             "gpt5": "Advanced AI diagnostics with cost optimization"
         }
     }
@@ -502,13 +456,6 @@ async def api_info():
                 "endpoints": {
                     "detect": "POST /api/yolo/detect",
                     "detect-base64": "POST /api/yolo/detect-base64"
-                }
-            },
-            "ollama": {
-                "description": "Local AI chat diagnostics using Ollama",
-                "endpoints": {
-                    "diagnostic": "POST /api/ollama/diagnostic",
-                    "models": "GET /api/ollama/models"
                 }
             },
             "gpt5": {
@@ -845,68 +792,6 @@ async def detect_motorcycle_issues_base64(
         logger.error("YOLOv8 base64 detection failed", error=str(e))
         raise HTTPException(status_code=500, detail="Internal server error")
 
-# Ollama Endpoints
-
-@app.post("/api/ollama/diagnostic")
-async def generate_diagnostic_response(
-    request: DiagnosticRequest,
-    start_time: float = Depends(time_request)
-):
-    """Generate AI diagnostic response using Ollama"""
-    REQUEST_COUNT.labels(method="POST", endpoint="/api/ollama/diagnostic", status="200").inc()
-    
-    if not service_health["ollama"]:
-        raise HTTPException(status_code=503, detail="Ollama service unavailable")
-    
-    try:
-        # Forward request to Ollama service
-        response = await http_client.post(
-            f"{OLLAMA_SERVICE_URL}/api/generate",
-            json={
-                "model": request.model,
-                "prompt": request.user_message,
-                "stream": False,
-                "options": {
-                    "temperature": 0.7,
-                    "top_p": 0.9,
-                    "top_k": 40,
-                    "repeat_penalty": 1.1
-                }
-            }
-        )
-        
-        if response.status_code == 200:
-            result = response.json()
-            return ServiceResponse(
-                success=True,
-                data=result,
-                service="ollama",
-                processing_time=time.time() - start_time
-            )
-        else:
-            raise HTTPException(status_code=response.status_code, detail=response.text)
-            
-    except httpx.TimeoutException:
-        raise HTTPException(status_code=504, detail="Ollama service timeout")
-    except Exception as e:
-        logger.error("Ollama diagnostic failed", error=str(e))
-        raise HTTPException(status_code=500, detail="Internal server error")
-
-@app.get("/api/ollama/models")
-async def get_available_models():
-    """Get available Ollama models"""
-    if not service_health["ollama"]:
-        raise HTTPException(status_code=503, detail="Ollama service unavailable")
-    
-    try:
-        response = await http_client.get(f"{OLLAMA_SERVICE_URL}/api/tags")
-        if response.status_code == 200:
-            return response.json()
-        else:
-            raise HTTPException(status_code=response.status_code, detail=response.text)
-    except Exception as e:
-        logger.error("Failed to get Ollama models", error=str(e))
-        raise HTTPException(status_code=500, detail="Internal server error")
 
 # GPT-5 Endpoints
 
@@ -925,44 +810,9 @@ async def generate_gpt5_diagnostic(
         cached_response.cached = True
         return cached_response
     
-    # Determine which model to use
-    use_gpt5 = should_use_gpt5(request)
-    
     try:
-        if use_gpt5:
-            response = await call_gpt5_api(request)
-        else:
-            # Fallback to Ollama
-            ollama_response = await http_client.post(
-                f"{OLLAMA_SERVICE_URL}/api/generate",
-                json={
-                    "model": "llama3.2:3b",
-                    "prompt": request.user_message,
-                    "stream": False,
-                    "options": {
-                        "temperature": 0.7,
-                        "top_p": 0.9
-                    }
-                }
-            )
-            
-            if ollama_response.status_code == 200:
-                result = ollama_response.json()
-                content = result.get("response", "Unable to generate response")
-                
-                response = GPT5DiagnosticResponse(
-                    success=True,
-                    response=content,
-                    model_used="ollama-llama3.2",
-                    cost=0.0,  # Free
-                    cached=False,
-                    processing_time=time.time() - start_time,
-                    recommendations=extract_recommendations(content),
-                    severity="normal",
-                    immediate_actions=[]
-                )
-            else:
-                raise HTTPException(status_code=ollama_response.status_code, detail="Ollama fallback failed")
+        # Always use GPT-5 for diagnostics
+        response = await call_gpt5_api(request)
         
         # Cache the response
         cache_gpt5_response(cache_key, response)
@@ -1040,59 +890,8 @@ async def complete_diagnostic(
             cached_response.cached = True
             ai_analysis = cached_response
         else:
-            # Determine which model to use
-            use_gpt5 = should_use_gpt5(gpt5_request)
-            
-            if use_gpt5:
-                ai_analysis = await call_gpt5_api(gpt5_request)
-            else:
-                # Fallback to Ollama
-                enhanced_prompt = f"""
-                Based on the following motorcycle diagnostic information:
-                
-                Visual Analysis (YOLOv8): {yolo_result}
-                User Description: {user_message}
-                
-                Please provide a comprehensive diagnostic analysis including:
-                1. Issue identification
-                2. Severity assessment
-                3. Immediate actions
-                4. Long-term solutions
-                5. Safety warnings
-                """
-                
-                ollama_response = await http_client.post(
-                    f"{OLLAMA_SERVICE_URL}/api/generate",
-                    json={
-                        "model": "llama3.2:3b",
-                        "prompt": enhanced_prompt,
-                        "stream": False,
-                        "options": {
-                            "temperature": 0.7,
-                            "top_p": 0.9,
-                            "top_k": 40,
-                            "repeat_penalty": 1.1
-                        }
-                    }
-                )
-                
-                if ollama_response.status_code == 200:
-                    ollama_result = ollama_response.json()
-                    content = ollama_result.get("response", "Unable to generate response")
-                    
-                    ai_analysis = GPT5DiagnosticResponse(
-                        success=True,
-                        response=content,
-                        model_used="ollama-llama3.2",
-                        cost=0.0,
-                        cached=False,
-                        processing_time=time.time() - start_time,
-                        recommendations=extract_recommendations(content),
-                        severity="normal",
-                        immediate_actions=[]
-                    )
-                else:
-                    raise HTTPException(status_code=ollama_response.status_code, detail="AI analysis failed")
+            # Always use GPT-5 for diagnostics
+            ai_analysis = await call_gpt5_api(gpt5_request)
             
             # Cache the response
             cache_gpt5_response(cache_key, ai_analysis)
