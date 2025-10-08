@@ -126,21 +126,28 @@ async def lifespan(app: FastAPI):
         
         # Initialize YOLOv8 model
         model_path = os.path.join(MODEL_CACHE_DIR, "motorcycle_diagnostic.pt")
+        local_model_path = "motorcycle_diagnostic.pt"
         
-        # Download model from Supabase Storage if not exists locally
-        if not os.path.exists(model_path):
-            await download_yolo_model_from_supabase(model_path)
-        
-        # Load model
-        if os.path.exists(model_path):
+        # Try to load local model first
+        if os.path.exists(local_model_path):
+            yolo_model = YOLO(local_model_path)
+            logger.info("YOLOv8 model loaded from local file")
+        elif os.path.exists(model_path):
             yolo_model = YOLO(model_path)
-            logger.info("YOLOv8 model loaded from Supabase Storage")
+            logger.info("YOLOv8 model loaded from cache")
         else:
-            logger.info("Downloading fallback YOLOv8 model...")
-            yolo_model = YOLO("yolov8n.pt")  # Use nano model for cloud deployment
-            yolo_model.save(model_path)
-            # Upload to Supabase Storage
-            await upload_yolo_model_to_supabase(model_path)
+            # Download model from Supabase Storage if not exists locally
+            await download_yolo_model_from_supabase(model_path)
+            
+            if os.path.exists(model_path):
+                yolo_model = YOLO(model_path)
+                logger.info("YOLOv8 model loaded from Supabase Storage")
+            else:
+                logger.info("Downloading fallback YOLOv8 model...")
+                yolo_model = YOLO("yolov8n.pt")  # Use YOLOv8 nano as fallback
+                yolo_model.save(model_path)
+                # Upload to Supabase Storage
+                await upload_yolo_model_to_supabase(model_path)
         
         logger.info("YOLOv8 model initialized successfully")
     except Exception as e:

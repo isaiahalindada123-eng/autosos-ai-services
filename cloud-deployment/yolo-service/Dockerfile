@@ -43,6 +43,9 @@ COPY . .
 # Create directories for models
 RUN mkdir -p /app/models
 
+# Copy the trained model if it exists
+COPY motorcycle_diagnostic.pt* /app/
+
 # Create non-root user
 RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
 USER appuser
