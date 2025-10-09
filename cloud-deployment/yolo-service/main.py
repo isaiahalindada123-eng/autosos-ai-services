@@ -35,7 +35,7 @@ logger = logging.getLogger("autosos-yolov8")
 # Config
 # =========================
 MODEL_CACHE_DIR = os.getenv("MODEL_CACHE_DIR", "/app/models")
-MODEL_FILENAME = "motorcycle_diagnostics.pt"
+MODEL_FILENAME = "motorcycle_diagnostic.pt"
 MODEL_PATH = os.path.join(MODEL_CACHE_DIR, MODEL_FILENAME)
 
 SUPABASE_URL = os.getenv("SUPABASE_URL")
@@ -196,7 +196,7 @@ async def lifespan(app: FastAPI):
 # FastAPI App
 # =========================
 app = FastAPI(
-    title="AutoSOS YOLOv8 Motorcycle Diagnostics",
+    title="AutoSOS YOLOv8 Motorcycle Diagnostic",
     description="Detects motorcycle issues using YOLOv8",
     version="1.0.0",
     lifespan=lifespan
