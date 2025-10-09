@@ -126,37 +126,55 @@ async def lifespan(app: FastAPI):
     logger.info("Starting YOLOv8 Service")
     
     try:
-        # Create models directory
-        os.makedirs(MODEL_CACHE_DIR, exist_ok=True)
+        logger.info("🚀 === YOLOv8 MODEL LOADING PROCESS STARTED ===")
         
-        # Initializme YOLOv8 model
+        # Create models directory
+        logger.info(f"📁 Creating models directory: {MODEL_CACHE_DIR}")
+        os.makedirs(MODEL_CACHE_DIR, exist_ok=True)
+        logger.info("✅ Models directory created successfully")
+        
+        # Initialize YOLOv8 model
         model_path = os.path.join(MODEL_CACHE_DIR, "motorcycle_diagnostic.pt")
         local_model_path = "motorcycle_diagnostic.pt"
         
+        logger.info(f"🔍 Checking for local model at: {local_model_path}")
+        logger.info(f"🔍 Checking for cached model at: {model_path}")
+        
         # Try to load local model first
         if os.path.exists(local_model_path):
+            logger.info(f"✅ Found local model file: {local_model_path}")
+            logger.info(f"📊 Local model file size: {os.path.getsize(local_model_path)} bytes")
             yolo_model = YOLO(local_model_path)
             logger.info("✅ YOLOv8 motorcycle diagnostic model loaded from local file")
             logger.info(f"Model path: {local_model_path}")
         elif os.path.exists(model_path):
+            logger.info(f"✅ Found cached model file: {model_path}")
+            logger.info(f"📊 Cached model file size: {os.path.getsize(model_path)} bytes")
             yolo_model = YOLO(model_path)
             logger.info("✅ YOLOv8 motorcycle diagnostic model loaded from cache")
             logger.info(f"Model path: {model_path}")
         else:
-            # Download model from Supabase Storage if not exists locally
+            logger.info("❌ No local or cached model found")
             logger.info("🔄 Custom motorcycle model not found locally, downloading from Supabase Storage...")
+            logger.info(f"📥 Attempting to download from: models/yolov8/motorcycle_diagnostic.pt")
+            
             download_yolo_model_from_supabase(model_path)
             
             if os.path.exists(model_path):
+                logger.info(f"✅ Model downloaded successfully to: {model_path}")
+                logger.info(f"📊 Downloaded model file size: {os.path.getsize(model_path)} bytes")
                 yolo_model = YOLO(model_path)
                 logger.info("✅ YOLOv8 motorcycle diagnostic model loaded from Supabase Storage")
                 logger.info(f"Model path: {model_path}")
             else:
+                logger.error("❌ Failed to download model from Supabase Storage")
                 logger.warning("⚠️ Custom motorcycle model not available, using fallback YOLOv8 nano model")
                 logger.warning("⚠️ This model will NOT detect motorcycle issues - only general objects")
+                logger.info("📥 Downloading default YOLOv8 nano model...")
                 yolo_model = YOLO("yolov8n.pt")  # Use YOLOv8 nano as fallback
+                logger.info("💾 Saving fallback model to cache...")
                 yolo_model.save(model_path)
-                # Upload to Supabase Storage
+                logger.info("📤 Uploading fallback model to Supabase Storage...")
                 upload_yolo_model_to_supabase(model_path)
         
         # Log model information
@@ -190,28 +208,53 @@ async def lifespan(app: FastAPI):
 # Supabase Storage functions
 def download_yolo_model_from_supabase(model_path: str):
     """Download YOLOv8 model from Supabase Storage"""
+    logger.info("🔗 === SUPABASE MODEL DOWNLOAD STARTED ===")
+    
     if not supabase_client:
-        logger.warning("Supabase client not initialized, skipping model download")
+        logger.error("❌ Supabase client not initialized, skipping model download")
+        logger.error("❌ This means the service will fall back to the default YOLOv8 nano model")
         return
     
     try:
-        # Try to download the model from Supabase Storage using the correct path
-        logger.info("Attempting to download motorcycle_diagnostic.pt from Supabase Storage...")
+        logger.info("✅ Supabase client is initialized")
+        logger.info("📥 Attempting to download motorcycle_diagnostic.pt from Supabase Storage...")
+        logger.info("🔗 Storage bucket: autosos")
+        logger.info("📁 File path: models/yolov8/motorcycle_diagnostic.pt")
+        
         response = supabase_client.storage.from_("autosos").download("models/yolov8/motorcycle_diagnostic.pt")
         
         if response:
+            logger.info("✅ Successfully received response from Supabase Storage")
+            logger.info(f"📊 Response type: {type(response)}")
+            logger.info(f"📊 Response size: {len(response)} bytes")
+            
             # Save the model to local path
+            logger.info(f"💾 Saving model to: {model_path}")
             with open(model_path, 'wb') as f:
                 f.write(response)
-            logger.info("✅ YOLOv8 motorcycle diagnostic model downloaded from Supabase Storage")
-            logger.info(f"Model saved to: {model_path}")
-            logger.info(f"Model size: {len(response)} bytes")
+            
+            # Verify the file was saved
+            if os.path.exists(model_path):
+                file_size = os.path.getsize(model_path)
+                logger.info("✅ YOLOv8 motorcycle diagnostic model downloaded from Supabase Storage")
+                logger.info(f"✅ Model saved to: {model_path}")
+                logger.info(f"✅ Model size: {file_size} bytes")
+                logger.info("✅ File verification: Model file exists and is readable")
+            else:
+                logger.error("❌ Model file was not saved successfully")
         else:
-            logger.warning("No YOLOv8 model found in Supabase Storage at models/yolov8/motorcycle_diagnostic.pt")
+            logger.error("❌ No response received from Supabase Storage")
+            logger.error("❌ This could mean:")
+            logger.error("   - File does not exist at models/yolov8/motorcycle_diagnostic.pt")
+            logger.error("   - Storage bucket 'autosos' does not exist")
+            logger.error("   - Permission issues with the storage bucket")
+            logger.error("   - Network connectivity issues")
         
     except Exception as e:
-        logger.error(f"Failed to download YOLOv8 model from Supabase: {e}")
-        logger.error("This means the service will fall back to the default YOLOv8 nano model")
+        logger.error(f"❌ Failed to download YOLOv8 model from Supabase: {e}")
+        logger.error(f"❌ Exception type: {type(e)}")
+        logger.error("❌ This means the service will fall back to the default YOLOv8 nano model")
+        logger.error("❌ The custom motorcycle diagnostic model will NOT be available")
 
 def upload_yolo_model_to_supabase(model_path: str):
     """Upload YOLOv8 model to Supabase Storage"""
