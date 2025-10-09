@@ -165,6 +165,16 @@ async def lifespan(app: FastAPI):
         if hasattr(yolo_model, 'names'):
             logger.info(f"Model classes: {yolo_model.names}")
             logger.info(f"Number of classes: {len(yolo_model.names)}")
+            
+            # Check if this is the custom motorcycle model
+            expected_classes = ['broken_headlights_tail_lights', 'broken_side_mirror', 'flat_tire', 'oil_leak']
+            if any(class_name in str(yolo_model.names) for class_name in expected_classes):
+                logger.info("✅ CUSTOM MOTORCYCLE DIAGNOSTIC MODEL IS ACTIVE")
+                logger.info("✅ This model can detect motorcycle issues")
+            else:
+                logger.warning("⚠️ DEFAULT YOLOv8 MODEL IS ACTIVE")
+                logger.warning("⚠️ This model CANNOT detect motorcycle issues - only general objects")
+                logger.warning("⚠️ Expected motorcycle classes not found in model")
         else:
             logger.warning("Model does not have 'names' attribute")
     except Exception as e:
@@ -427,8 +437,30 @@ async def detect_motorcycle_issues(
             },
             "confidence_threshold": confidence,
             "detection_time": detection_time,
-            "processing_time": time.time()
+            "processing_time": time.time(),
+            "model_info": {
+                "model_type": "custom_motorcycle_diagnostic" if hasattr(yolo_model, 'names') and any(class_name in str(yolo_model.names) for class_name in ['broken_headlights_tail_lights', 'broken_side_mirror', 'flat_tire', 'oil_leak']) else "default_yolov8",
+                "model_classes": yolo_model.names if hasattr(yolo_model, 'names') else "unknown",
+                "total_classes": len(yolo_model.names) if hasattr(yolo_model, 'names') else 0
+            }
         }
+        
+        # Enhanced logging for response
+        logger.info(f"🎯 DETECTION RESPONSE SUMMARY:")
+        logger.info(f"   - Success: {response_data['success']}")
+        logger.info(f"   - Detections found: {response_data['detection_count']}")
+        logger.info(f"   - Image size: {response_data['image_size']['width']}x{response_data['image_size']['height']}")
+        logger.info(f"   - Confidence threshold: {response_data['confidence_threshold']}")
+        logger.info(f"   - Detection time: {response_data['detection_time']:.3f}s")
+        logger.info(f"   - Model type: {response_data['model_info']['model_type']}")
+        logger.info(f"   - Model classes: {response_data['model_info']['model_classes']}")
+        
+        if detections:
+            logger.info(f"   - Detection details:")
+            for i, detection in enumerate(detections):
+                logger.info(f"     Detection {i+1}: {detection['class_name']} ({detection['display_name']}) - {detection['confidence']:.3f} confidence")
+        else:
+            logger.info(f"   - No detections found above confidence threshold {confidence}")
         
         # Add annotated image if requested
         if include_annotated_image and detections:
