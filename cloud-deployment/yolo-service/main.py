@@ -129,32 +129,44 @@ async def lifespan(app: FastAPI):
         # Create models directory
         os.makedirs(MODEL_CACHE_DIR, exist_ok=True)
         
-        # Initialize YOLOv8 model
+        # Initializme YOLOv8 model
         model_path = os.path.join(MODEL_CACHE_DIR, "motorcycle_diagnostic.pt")
         local_model_path = "motorcycle_diagnostic.pt"
         
         # Try to load local model first
         if os.path.exists(local_model_path):
             yolo_model = YOLO(local_model_path)
-            logger.info("YOLOv8 model loaded from local file")
+            logger.info("✅ YOLOv8 motorcycle diagnostic model loaded from local file")
+            logger.info(f"Model path: {local_model_path}")
         elif os.path.exists(model_path):
             yolo_model = YOLO(model_path)
-            logger.info("YOLOv8 model loaded from cache")
+            logger.info("✅ YOLOv8 motorcycle diagnostic model loaded from cache")
+            logger.info(f"Model path: {model_path}")
         else:
             # Download model from Supabase Storage if not exists locally
+            logger.info("🔄 Custom motorcycle model not found locally, downloading from Supabase Storage...")
             download_yolo_model_from_supabase(model_path)
             
             if os.path.exists(model_path):
                 yolo_model = YOLO(model_path)
-                logger.info("YOLOv8 model loaded from Supabase Storage")
+                logger.info("✅ YOLOv8 motorcycle diagnostic model loaded from Supabase Storage")
+                logger.info(f"Model path: {model_path}")
             else:
-                logger.info("Downloading fallback YOLOv8 model...")
+                logger.warning("⚠️ Custom motorcycle model not available, using fallback YOLOv8 nano model")
+                logger.warning("⚠️ This model will NOT detect motorcycle issues - only general objects")
                 yolo_model = YOLO("yolov8n.pt")  # Use YOLOv8 nano as fallback
                 yolo_model.save(model_path)
                 # Upload to Supabase Storage
                 upload_yolo_model_to_supabase(model_path)
         
+        # Log model information
         logger.info("YOLOv8 model initialized successfully")
+        logger.info(f"Model type: {type(yolo_model)}")
+        if hasattr(yolo_model, 'names'):
+            logger.info(f"Model classes: {yolo_model.names}")
+            logger.info(f"Number of classes: {len(yolo_model.names)}")
+        else:
+            logger.warning("Model does not have 'names' attribute")
     except Exception as e:
         logger.error("Failed to initialize YOLOv8 model", error=str(e))
         # Fallback to nano model
@@ -173,19 +185,23 @@ def download_yolo_model_from_supabase(model_path: str):
         return
     
     try:
-        # Try to download the model from Supabase Storage
-        response = supabase_client.storage.from_("autosos").download("yolo_models/motorcycle_diagnostic.pt")
+        # Try to download the model from Supabase Storage using the correct path
+        logger.info("Attempting to download motorcycle_diagnostic.pt from Supabase Storage...")
+        response = supabase_client.storage.from_("autosos").download("models/yolov8/motorcycle_diagnostic.pt")
         
         if response:
             # Save the model to local path
             with open(model_path, 'wb') as f:
                 f.write(response)
-            logger.info("YOLOv8 model downloaded from Supabase Storage")
+            logger.info("✅ YOLOv8 motorcycle diagnostic model downloaded from Supabase Storage")
+            logger.info(f"Model saved to: {model_path}")
+            logger.info(f"Model size: {len(response)} bytes")
         else:
-            logger.warning("No YOLOv8 model found in Supabase Storage")
+            logger.warning("No YOLOv8 model found in Supabase Storage at models/yolov8/motorcycle_diagnostic.pt")
         
     except Exception as e:
         logger.error(f"Failed to download YOLOv8 model from Supabase: {e}")
+        logger.error("This means the service will fall back to the default YOLOv8 nano model")
 
 def upload_yolo_model_to_supabase(model_path: str):
     """Upload YOLOv8 model to Supabase Storage"""
@@ -198,13 +214,13 @@ def upload_yolo_model_to_supabase(model_path: str):
         with open(model_path, 'rb') as f:
             model_data = f.read()
         
-        # Upload to Supabase Storage
+        # Upload to Supabase Storage using the correct path
         supabase_client.storage.from_("autosos").upload(
-            "yolo_models/motorcycle_diagnostic.pt",
+            "models/yolov8/motorcycle_diagnostic.pt",
             model_data,
             {"content-type": "application/octet-stream"}
         )
-        logger.info("YOLOv8 model uploaded to Supabase Storage")
+        logger.info("YOLOv8 model uploaded to Supabase Storage at models/yolov8/motorcycle_diagnostic.pt")
         
     except Exception as e:
         logger.error(f"Failed to upload YOLOv8 model to Supabase: {e}")
@@ -234,21 +250,30 @@ def process_detection_results(results, confidence_threshold: float = 0.5) -> Lis
     """Process YOLOv8 detection results"""
     detections = []
     
-    for result in results:
+    logger.info(f"Processing detection results with confidence threshold: {confidence_threshold}")
+    logger.info(f"Number of results to process: {len(results) if results else 0}")
+    
+    for i, result in enumerate(results):
+        logger.info(f"Processing result {i}")
         if hasattr(result, 'boxes') and result.boxes is not None:
             boxes = result.boxes
-            for box in boxes:
+            logger.info(f"Result {i} has {len(boxes)} boxes")
+            for j, box in enumerate(boxes):
                 # Get box data
                 if hasattr(box, 'xyxy'):
                     bbox = box.xyxy[0].cpu().numpy().tolist()
                     conf = box.conf[0].cpu().numpy().item()
                     cls = int(box.cls[0].cpu().numpy().item())
                     
+                    logger.info(f"Box {j}: class={cls}, confidence={conf:.3f}, bbox={bbox}")
+                    
                     # Filter by confidence
                     if conf >= confidence_threshold:
                         # Get class name
                         class_name = CLASS_NAMES.get(cls, f"class_{cls}")
                         display_name = CLASS_DISPLAY_NAMES.get(cls, f"Class {cls}")
+                        
+                        logger.info(f"Box {j} passed confidence filter: {class_name} ({display_name})")
                         
                         detection = {
                             "bbox": bbox,
@@ -259,7 +284,12 @@ def process_detection_results(results, confidence_threshold: float = 0.5) -> Lis
                             "color": CLASS_COLORS.get(cls, (255, 255, 255))
                         }
                         detections.append(detection)
+                    else:
+                        logger.info(f"Box {j} filtered out due to low confidence: {conf:.3f} < {confidence_threshold}")
+        else:
+            logger.info(f"Result {i} has no boxes or boxes is None")
     
+    logger.info(f"Final detections count: {len(detections)}")
     return detections
 
 def create_annotated_image(image: np.ndarray, detections: List[Dict[str, Any]]) -> str:
@@ -368,6 +398,20 @@ async def detect_motorcycle_issues(
         start_time = time.time()
         results = yolo_model(image, conf=confidence, verbose=False)
         detection_time = time.time() - start_time
+        
+        # Debug logging
+        logger.info(f"YOLOv8 detection completed in {detection_time:.3f}s")
+        logger.info(f"Model type: {type(yolo_model)}")
+        logger.info(f"Model names: {getattr(yolo_model, 'names', 'No names attribute')}")
+        logger.info(f"Number of results: {len(results) if results else 0}")
+        
+        if results:
+            for i, result in enumerate(results):
+                logger.info(f"Result {i}: boxes={getattr(result, 'boxes', None)}")
+                if hasattr(result, 'boxes') and result.boxes is not None:
+                    logger.info(f"Result {i}: {len(result.boxes)} detections found")
+                else:
+                    logger.info(f"Result {i}: No detections found")
         
         # Process results
         detections = process_detection_results(results, confidence)
