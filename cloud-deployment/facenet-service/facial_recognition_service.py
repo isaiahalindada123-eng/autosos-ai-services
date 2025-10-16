@@ -101,10 +101,6 @@ class FaceNetService:
                         data = pickle.loads(db_response)
                         self.face_embeddings = data.get('embeddings', {})
                         self.face_database = data.get('database', {})
-                        
-                        # Clean up corrupted embeddings
-                        self._clean_corrupted_embeddings()
-                        
                         self.logger.info(f"Loaded face database from Supabase Storage: {len(self.face_database)} faces")
                         return
                 except Exception as e:
@@ -119,36 +115,6 @@ class FaceNetService:
             self.logger.error(f"Failed to load database: {e}")
             raise
 
-    def _clean_corrupted_embeddings(self):
-        """Clean up corrupted embeddings from the database"""
-        try:
-            corrupted_users = []
-            
-            for user_id, embedding in self.face_embeddings.items():
-                # Check if embedding has correct shape (should be 128 dimensions)
-                if embedding.shape != (128,) and embedding.shape != (1, 128):
-                    self.logger.warning(f"Corrupted embedding for user {user_id}: shape {embedding.shape}")
-                    corrupted_users.append(user_id)
-                elif np.all(embedding == 0):
-                    self.logger.warning(f"Zero embedding for user {user_id}")
-                    corrupted_users.append(user_id)
-            
-            # Remove corrupted embeddings
-            for user_id in corrupted_users:
-                if user_id in self.face_embeddings:
-                    del self.face_embeddings[user_id]
-                if user_id in self.face_database:
-                    del self.face_database[user_id]
-                self.logger.info(f"Removed corrupted embedding for user {user_id}")
-            
-            if corrupted_users:
-                self.logger.info(f"Cleaned up {len(corrupted_users)} corrupted embeddings")
-                # Save cleaned database
-                self._save_database()
-                
-        except Exception as e:
-            self.logger.error(f"Failed to clean corrupted embeddings: {e}")
-    
     def _create_facenet_model(self):
         """Create a simple FaceNet-like model for demonstration"""
         from tensorflow.keras.applications import MobileNetV2
@@ -268,77 +234,33 @@ class FaceNetService:
     
     def _preprocess_image(self, image: np.ndarray) -> np.ndarray:
         """Preprocess image for FaceNet model"""
-        try:
-            # Validate input
-            if not isinstance(image, np.ndarray):
-                self.logger.error(f"Expected numpy array, got {type(image)}")
-                raise ValueError(f"Expected numpy array, got {type(image)}")
-            
-            if image.size == 0:
-                self.logger.error("Image is empty")
-                raise ValueError("Image is empty")
-            
-            self.logger.info(f"Preprocessing image with shape: {image.shape}, dtype: {image.dtype}")
-            
-            # Ensure image has 3 dimensions (height, width, channels)
-            if len(image.shape) != 3:
-                self.logger.error(f"Expected 3D image, got {len(image.shape)}D with shape {image.shape}")
-                raise ValueError(f"Expected 3D image, got {len(image.shape)}D")
-            
-            # Resize to model input size
-            image = cv2.resize(image, (224, 224))
-            
-            # Convert BGR to RGB
-            image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-            
-            # Normalize
-            image = image.astype(np.float32) / 255.0
-            
-            # Add batch dimension
-            image = np.expand_dims(image, axis=0)
-            
-            self.logger.info(f"Preprocessed image shape: {image.shape}")
-            return image
-            
-        except Exception as e:
-            self.logger.error(f"Error preprocessing image: {e}")
-            raise
+        # Resize to model input size
+        image = cv2.resize(image, (224, 224))
+        
+        # Convert BGR to RGB
+        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+        
+        # Normalize
+        image = image.astype(np.float32) / 255.0
+        
+        # Add batch dimension
+        image = np.expand_dims(image, axis=0)
+        
+        return image
     
     def _extract_face_embedding(self, image: np.ndarray) -> np.ndarray:
         """Extract face embedding from image"""
         try:
-            # Validate input image
-            if image is None or image.size == 0:
-                self.logger.error("Invalid input image")
-                return None
-            
-            self.logger.info(f"Input image shape: {image.shape}")
-            
             # Preprocess image
             processed_image = self._preprocess_image(image)
-            self.logger.info(f"Processed image shape: {processed_image.shape}")
-            
-            # Validate model
-            if self.model is None:
-                self.logger.error("Model not loaded")
-                return None
             
             # Get embedding
             embedding = self.model.predict(processed_image, verbose=0)
-            self.logger.info(f"Raw embedding shape: {embedding.shape}")
-            
-            # Validate embedding shape
-            if embedding.shape[-1] != 128:
-                self.logger.error(f"Unexpected embedding dimension: {embedding.shape}, expected 128")
-                return None
             
             # Normalize embedding
             embedding = embedding / np.linalg.norm(embedding)
             
-            flattened = embedding.flatten()
-            self.logger.info(f"Final embedding shape: {flattened.shape}")
-            
-            return flattened
+            return embedding.flatten()
             
         except Exception as e:
             self.logger.error(f"Failed to extract face embedding: {e}")
@@ -347,38 +269,11 @@ class FaceNetService:
     def _calculate_similarity(self, embedding1: np.ndarray, embedding2: np.ndarray) -> float:
         """Calculate cosine similarity between two embeddings"""
         try:
-            # Validate embedding shapes
-            if embedding1.shape != embedding2.shape:
-                self.logger.error(f"Embedding shape mismatch: {embedding1.shape} vs {embedding2.shape}")
-                return 0.0
-            
-            # Ensure embeddings are 1D arrays
-            if embedding1.ndim > 1:
-                embedding1 = embedding1.flatten()
-            if embedding2.ndim > 1:
-                embedding2 = embedding2.flatten()
-            
-            # Check if embeddings are valid (not empty or all zeros)
-            if np.all(embedding1 == 0) or np.all(embedding2 == 0):
-                self.logger.warning("One or both embeddings are zero vectors")
-                return 0.0
-            
-            # Calculate cosine similarity
-            dot_product = np.dot(embedding1, embedding2)
-            norm1 = np.linalg.norm(embedding1)
-            norm2 = np.linalg.norm(embedding2)
-            
-            if norm1 == 0 or norm2 == 0:
-                self.logger.warning("One or both embeddings have zero norm")
-                return 0.0
-            
-            similarity = dot_product / (norm1 * norm2)
-            
-            # Clamp similarity to valid range [-1, 1]
-            similarity = np.clip(similarity, -1.0, 1.0)
-            
+            # Cosine similarity
+            similarity = np.dot(embedding1, embedding2) / (
+                np.linalg.norm(embedding1) * np.linalg.norm(embedding2)
+            )
             return float(similarity)
-            
         except Exception as e:
             self.logger.error(f"Failed to calculate similarity: {e}")
             return 0.0
@@ -393,14 +288,6 @@ class FaceNetService:
                 return {
                     "success": False,
                     "error": "Failed to extract face embedding"
-                }
-            
-            # Validate embedding before storing
-            if embedding.shape != (128,) and embedding.shape != (1, 128):
-                self.logger.error(f"Invalid embedding shape for user {user_id}: {embedding.shape}")
-                return {
-                    "success": False,
-                    "error": f"Invalid embedding shape: {embedding.shape}"
                 }
             
             # Store embedding and user info
@@ -434,27 +321,6 @@ class FaceNetService:
     def recognize_face(self, image: np.ndarray) -> Optional[Dict[str, Any]]:
         """Recognize a face from image"""
         try:
-            # Validate and convert input image
-            if not isinstance(image, np.ndarray):
-                self.logger.error(f"Image is not a numpy array, got type: {type(image)}")
-                if isinstance(image, list):
-                    self.logger.error(f"Image is a list with length: {len(image)}")
-                    # Try to convert list to numpy array
-                    try:
-                        image = np.array(image)
-                        self.logger.info(f"Converted list to numpy array with shape: {image.shape}")
-                    except Exception as conv_error:
-                        self.logger.error(f"Failed to convert list to numpy array: {conv_error}")
-                        return None
-                else:
-                    return None
-            
-            if image.size == 0:
-                self.logger.error("Image is empty")
-                return None
-                
-            self.logger.info(f"Input image type: {type(image)}, shape: {image.shape}, dtype: {image.dtype}")
-            
             # Extract face embedding
             query_embedding = self._extract_face_embedding(image)
             
@@ -466,11 +332,6 @@ class FaceNetService:
             best_similarity = 0.0
             
             for user_id, stored_embedding in self.face_embeddings.items():
-                # Validate stored embedding shape
-                if stored_embedding.shape != query_embedding.shape:
-                    self.logger.warning(f"Skipping user {user_id} due to embedding shape mismatch: {stored_embedding.shape} vs {query_embedding.shape}")
-                    continue
-                
                 similarity = self._calculate_similarity(query_embedding, stored_embedding)
                 
                 if similarity > best_similarity and similarity >= self.similarity_threshold:

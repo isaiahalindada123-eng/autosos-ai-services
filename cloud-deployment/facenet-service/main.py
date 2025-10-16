@@ -296,24 +296,13 @@ async def process_payment(
     try:
         # Read and process image
         image_data = await file.read()
-        logger.info(f"Received image data: {len(image_data)} bytes")
-        
         nparr = np.frombuffer(image_data, np.uint8)
-        logger.info(f"Created numpy array from buffer: shape={nparr.shape}, dtype={nparr.dtype}")
-        
         if not OPENCV_AVAILABLE:
             raise HTTPException(status_code=500, detail="OpenCV not available for image processing")
-        
         image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-        logger.info(f"Decoded image: type={type(image)}, shape={image.shape if image is not None else 'None'}")
         
         if image is None:
-            logger.error("Failed to decode image with OpenCV")
             raise HTTPException(status_code=400, detail="Invalid image format")
-        
-        if not isinstance(image, np.ndarray):
-            logger.error(f"Decoded image is not numpy array: {type(image)}")
-            raise HTTPException(status_code=400, detail="Image decoding failed")
         
         # Recognize face
         recognition_result = facenet_service.recognize_face(image)
